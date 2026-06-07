@@ -141,24 +141,31 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
     })
   }, [grassColor, grassRough, grassNormal, roadTextures])
 
+  // ── painting logic ───────────────────────────────────────────────────────────
+  // Erase clears all layers; paint writes only to the selected layer.
+  const doPaint = useCallback((uv) => {
+    if (eraseMode) {
+      masks.forEach(({ data, tex }) => applyBrush(uv.x, uv.y, brushRadius, data, tex, true, brushOpacity))
+    } else {
+      const idx = ROAD_TEXTURES.findIndex(t => t.label === selectedTexture)
+      if (idx >= 0) applyBrush(uv.x, uv.y, brushRadius, masks[idx].data, masks[idx].tex, false, brushOpacity)
+    }
+  }, [brushRadius, eraseMode, brushOpacity, masks, selectedTexture])
+
   // ── pointer handlers ─────────────────────────────────────────────────────────
   const handlePointerDown = useCallback((e) => {
     if (!paintMode) return
     e.stopPropagation()
     isPainting.current = true
-    const idx = ROAD_TEXTURES.findIndex(t => t.label === selectedTexture)
-    if (e.uv && idx >= 0) applyBrush(e.uv.x, e.uv.y, brushRadius, masks[idx].data, masks[idx].tex, eraseMode, brushOpacity)
-  }, [paintMode, brushRadius, eraseMode, brushOpacity, masks, selectedTexture])
+    if (e.uv) doPaint(e.uv)
+  }, [paintMode, doPaint])
 
   const handlePointerMove = useCallback((e) => {
     if (!paintMode) return
     e.stopPropagation()
     cursorPos.current.copy(e.point)
-    if (isPainting.current && e.uv) {
-      const idx = ROAD_TEXTURES.findIndex(t => t.label === selectedTexture)
-      if (idx >= 0) applyBrush(e.uv.x, e.uv.y, brushRadius, masks[idx].data, masks[idx].tex, eraseMode, brushOpacity)
-    }
-  }, [paintMode, brushRadius, eraseMode, brushOpacity, masks, selectedTexture])
+    if (isPainting.current && e.uv) doPaint(e.uv)
+  }, [paintMode, doPaint])
 
   // ── cursor ring ──────────────────────────────────────────────────────────────
   useFrame(() => {
