@@ -1,34 +1,12 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Environment, useTexture } from '@react-three/drei'
+import { OrbitControls, Environment } from '@react-three/drei'
 import { EffectComposer, N8AO, SMAA } from '@react-three/postprocessing'
 import { useControls } from 'leva'
 import * as THREE from 'three'
 import { Rain } from './Rain'
 import { Scatter } from './Scatter'
-
-function Ground({ receiveShadow }) {
-  const [colorMap, roughnessMap, normalMap] = useTexture([
-    '/textures/moss_ground_03_2k/moss_groud_03_Base_Color_2k.png',
-    '/textures/moss_ground_03_2k/moss_groud_03_Roughness_2k.png',
-    '/textures/moss_ground_03_2k/moss_groud_03_Normal_gl_2k.png',
-  ])
-  ;[colorMap, roughnessMap, normalMap].forEach(t => {
-    t.wrapS = t.wrapT = THREE.RepeatWrapping
-    t.repeat.set(12, 12)
-  })
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow={receiveShadow}>
-      <planeGeometry args={[80, 80]} />
-      <meshStandardMaterial
-        map={colorMap}
-        roughnessMap={roughnessMap}
-        normalMap={normalMap}
-        roughness={1}
-      />
-    </mesh>
-  )
-}
+import { Ground } from './Ground'
 
 export default function App() {
   const { windSpeed, windStrength } = useControls('Grass', {
@@ -37,6 +15,11 @@ export default function App() {
   })
   const { rainIntensity } = useControls('Weather', {
     rainIntensity: { value: 1.0, min: 0, max: 2, step: 0.05, label: 'Rain' },
+  })
+  const { paintMode, brushRadius, eraseMode } = useControls('Road Painting', {
+    paintMode:   { value: false, label: 'Paint Roads' },
+    eraseMode:   { value: false, label: 'Erase'       },
+    brushRadius: { value: 3, min: 0.5, max: 12, step: 0.25, label: 'Brush Size' },
   })
   const { shadowMode, shadowRadius, aoRadius, aoIntensity } = useControls('Shadows', {
     shadowMode:   { value: 'Blob', options: ['Blob', 'Soft Shadows', 'SSAO', 'Soft Shadows + SSAO'], label: 'Mode' },
@@ -50,7 +33,7 @@ export default function App() {
   const showBlobs      = shadowMode === 'Blob'
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#8fafb8' }}>
+    <div style={{ width: '100vw', height: '100vh', background: '#8fafb8', cursor: paintMode ? 'none' : 'auto' }}>
       {/* shadows prop on Canvas means shadowMap.enabled=true from the very first frame,
           so every material compiles with USE_SHADOWMAP — no runtime recompile needed.
           The directional light's castShadow flag controls whether shadows actually render. */}
@@ -80,7 +63,12 @@ export default function App() {
         <Environment files="/textures/grasslands_sunset_2k.hdr" background />
 
         <Suspense fallback={null}>
-          <Ground receiveShadow={useSoftShadows} />
+          <Ground
+              receiveShadow={useSoftShadows}
+              paintMode={paintMode}
+              brushRadius={brushRadius}
+              eraseMode={eraseMode}
+            />
           <Scatter
             windSpeed={windSpeed}
             windStrength={windStrength}
@@ -105,6 +93,7 @@ export default function App() {
         )}
 
         <OrbitControls
+          enabled={!paintMode}
           target={[0, 0, 0]}
           minPolarAngle={Math.PI / 6}
           maxPolarAngle={Math.PI / 2.4}

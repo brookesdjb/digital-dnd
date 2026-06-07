@@ -4,6 +4,7 @@ import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  server: { port: 5174, strictPort: false },
   assetsInclude: ['**/*.glsl'],
   resolve: {
     dedupe: ['three'],
