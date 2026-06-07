@@ -7,7 +7,9 @@ const GROUND_SIZE = 80
 const MASK_SIZE   = 512
 const ROAD_ROT    = [-Math.PI / 2, 0, 0]
 
-// Paint or erase into the mask DataTexture at the given UV position
+// Paint or erase into the mask DataTexture at the given UV position.
+// Uses RGBA layout (4 bytes/pixel) — Three.js alphaMap reads the .g channel,
+// so we write to all channels to keep the texture grayscale-compatible.
 function applyBrush(uvX, uvY, radiusWorld, data, tex, erase) {
   const cx  = Math.floor(uvX * MASK_SIZE)
   const cy  = Math.floor((1 - uvY) * MASK_SIZE)   // flip Y to match Three UV convention
@@ -22,24 +24,27 @@ function applyBrush(uvX, uvY, radiusWorld, data, tex, erase) {
       const px = cx + dx
       const py = cy + dy
       if (px < 0 || px >= MASK_SIZE || py < 0 || py >= MASK_SIZE) continue
-      const idx = py * MASK_SIZE + px
-      if (erase) {
-        data[idx] = Math.max(0,   data[idx] - Math.floor(falloff * 180))
-      } else {
-        data[idx] = Math.min(255, data[idx] + Math.floor(falloff * 180))
-      }
+      const base = (py * MASK_SIZE + px) * 4
+      const cur  = data[base + 1]  // read from G channel
+      const next = erase
+        ? Math.max(0,   cur - Math.floor(falloff * 180))
+        : Math.min(255, cur + Math.floor(falloff * 180))
+      data[base]   = next   // R
+      data[base+1] = next   // G  ← alphaMap reads this
+      data[base+2] = next   // B
+      data[base+3] = 255    // A  (texture alpha, not surface opacity)
     }
   }
   tex.needsUpdate = true
 }
 
 export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode }) {
-  // ── road mask ────────────────────────────────────────────────────────────────
-  const maskData = useRef(new Uint8Array(MASK_SIZE * MASK_SIZE))
+  // ── road mask (RGBA, 4 bytes/pixel — Three.js alphaMap reads .g) ────────────
+  const maskData = useRef(new Uint8Array(MASK_SIZE * MASK_SIZE * 4))
   const maskTex  = useMemo(() => {
     const t = new THREE.DataTexture(
       maskData.current, MASK_SIZE, MASK_SIZE,
-      THREE.RedFormat, THREE.UnsignedByteType
+      THREE.RGBAFormat, THREE.UnsignedByteType
     )
     t.minFilter   = THREE.LinearFilter
     t.magFilter   = THREE.LinearFilter
@@ -116,8 +121,6 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode }) {
         rotation={ROAD_ROT}
         position={[0, -0.02, 0]}
         receiveShadow={receiveShadow}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
       >
         <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
         <meshStandardMaterial
@@ -129,10 +132,14 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode }) {
       </mesh>
 
       {/* ── road overlay (alphaMap = painted mask) ───────────────────────────── */}
+      {/* Sits at y=-0.015 (above grass) so the raycaster hits it first — */}
+      {/* pointer handlers live here so e.uv is always available.           */}
       <mesh
         rotation={ROAD_ROT}
         position={[0, -0.015, 0]}
         receiveShadow={false}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
       >
         <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
         <meshStandardMaterial
