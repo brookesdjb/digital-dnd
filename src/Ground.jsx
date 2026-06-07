@@ -103,7 +103,7 @@ async function saveMap(masks) {
 }
 
 function decodeMask(dataUrl, mask) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
       const canvas = document.createElement('canvas')
@@ -121,26 +121,33 @@ function decodeMask(dataUrl, mask) {
       mask.tex.needsUpdate = true
       resolve()
     }
+    img.onerror = reject
     img.src = dataUrl
   })
 }
 
 function loadMap(masks) {
+  // Input must be in the DOM before .click() — browsers block programmatic
+  // file pickers that aren't triggered from a live DOM element.
   const input  = document.createElement('input')
   input.type   = 'file'
   input.accept = '.json'
+  input.style.display = 'none'
+  document.body.appendChild(input)
+
   input.onchange = async e => {
+    document.body.removeChild(input)
     const file = e.target.files?.[0]
     if (!file) return
     try {
       const { layers } = JSON.parse(await file.text())
-      // Clear all masks then restore each saved layer
       masks.forEach(m => { m.data.fill(0); m.tex.needsUpdate = true })
       await Promise.all(layers.slice(0, masks.length).map((url, i) => decodeMask(url, masks[i])))
     } catch (err) {
       console.error('Failed to load terrain map:', err)
     }
   }
+
   input.click()
 }
 
