@@ -82,7 +82,7 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode }) {
     })
     ;[roadColor, roadRough, roadNormal].forEach(t => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping
-      t.repeat.set(10, 10)
+      t.repeat.set(20, 20)
     })
   }, [grassColor, grassRough, grassNormal, roadColor, roadRough, roadNormal])
 
