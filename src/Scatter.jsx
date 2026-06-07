@@ -93,7 +93,7 @@ function scatter(count, minDist, existing = []) {
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function Scatter({ windSpeed = 1.4, windStrength = 1.0, showBlobs = true, usePCSS = false }) {
+export function Scatter({ windSpeed = 1.4, windStrength = 1.0, showBlobs = true, usePCSS = false, blobSize = 1.0, blobOpacity = 1.0 }) {
   const b1 = useGLTF(`${BASE}BirchTree_1.gltf`).scene
   const b2 = useGLTF(`${BASE}BirchTree_2.gltf`).scene
   const b3 = useGLTF(`${BASE}BirchTree_3.gltf`).scene
@@ -154,6 +154,8 @@ export function Scatter({ windSpeed = 1.4, windStrength = 1.0, showBlobs = true,
     })
   , [instances])
 
+  useEffect(() => { shadowMat.opacity = blobOpacity }, [shadowMat, blobOpacity])
+
   // Enable / disable real shadow casting on all clones when PCSS mode changes
   useEffect(() => {
     clones.forEach(({ obj }) => {
@@ -181,7 +183,7 @@ export function Scatter({ windSpeed = 1.4, windStrength = 1.0, showBlobs = true,
           material={shadowMat}
           position={[inst.x, 0.02, inst.z]}
           rotation={[-Math.PI / 2, 0, 0]}
-          scale={inst.s * SHADOW_SCALE[inst.type]}
+          scale={inst.s * SHADOW_SCALE[inst.type] * blobSize}
           visible={showBlobs}
         />
       ))}

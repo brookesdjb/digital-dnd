@@ -21,11 +21,13 @@ export default function App() {
     eraseMode:   { value: false, label: 'Erase'       },
     brushRadius: { value: 3, min: 0.5, max: 12, step: 0.25, label: 'Brush Size' },
   })
-  const { shadowMode, shadowRadius, aoRadius, aoIntensity } = useControls('Shadows', {
+  const { shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity } = useControls('Shadows', {
     shadowMode:   { value: 'Blob', options: ['Blob', 'Soft Shadows', 'SSAO', 'Soft Shadows + SSAO'], label: 'Mode' },
-    shadowRadius: { value: 8,    min: 1,   max: 30, step: 1,   label: 'Shadow Softness' },
-    aoRadius:     { value: 1.5,  min: 0.1, max: 5,  step: 0.1, label: 'AO Radius'       },
-    aoIntensity:  { value: 5.0,  min: 0,   max: 20, step: 0.5, label: 'AO Intensity'    },
+    shadowRadius: { value: 8,    min: 1,   max: 30,  step: 1,    label: 'Shadow Softness' },
+    aoRadius:     { value: 1.5,  min: 0.1, max: 5,   step: 0.1,  label: 'AO Radius'       },
+    aoIntensity:  { value: 5.0,  min: 0,   max: 20,  step: 0.5,  label: 'AO Intensity'    },
+    blobSize:     { value: 1.0,  min: 0.1, max: 3.0, step: 0.05, label: 'Blob Size'       },
+    blobOpacity:  { value: 1.0,  min: 0,   max: 1,   step: 0.05, label: 'Blob Opacity'    },
   })
 
   const useSoftShadows = shadowMode === 'Soft Shadows' || shadowMode === 'Soft Shadows + SSAO'
@@ -74,6 +76,8 @@ export default function App() {
             windStrength={windStrength}
             showBlobs={showBlobs}
             usePCSS={useSoftShadows}
+            blobSize={blobSize}
+            blobOpacity={blobOpacity}
           />
         </Suspense>
 
