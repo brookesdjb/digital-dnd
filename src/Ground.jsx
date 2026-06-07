@@ -148,12 +148,13 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, selec
       </mesh>
 
       {/* ── one overlay per texture, each with its own painted mask ─────────── */}
+      {/* Tiny y-offset per layer avoids z-fighting; depthWrite=true lets the  */}
+      {/* depth buffer correctly place overlays behind trees, rain, etc.        */}
       {ROAD_TEXTURES.map((def, i) => (
         <mesh
           key={def.label}
           rotation={ROAD_ROT}
-          position={[0, -0.015, 0]}
-          renderOrder={10 + i}
+          position={[0, -0.019 + i * 0.001, 0]}
         >
           <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
           <meshStandardMaterial
@@ -162,7 +163,7 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, selec
             normalMap={roadTextures[i * 3 + 2]}
             alphaMap={masks[i].tex}
             transparent
-            depthWrite={false}
+            depthWrite
             roughness={0.9}
           />
         </mesh>
