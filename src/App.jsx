@@ -1,14 +1,34 @@
-import { Suspense } from 'react'
+import { Suspense, useRef, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
 import { OrbitControls, Environment } from '@react-three/drei'
 import { EffectComposer, N8AO, SMAA } from '@react-three/postprocessing'
-import { useControls } from 'leva'
+import { useControls, button } from 'leva'
 import * as THREE from 'three'
 import { Rain } from './Rain'
 import { Scatter } from './Scatter'
 import { Ground, ROAD_TEXTURE_LABELS } from './Ground'
+import { BattleGrid, SCREEN_SIZES, SCREEN_SIZE_LABELS } from './BattleGrid'
+
+// Vertical height needed to frame the screen height in view at the given FOV
+const TAN_HALF_FOV = Math.tan((45 * Math.PI / 180) / 2)
+
+function CameraController({ screenH, controlsRef }) {
+  const camera = useThree(s => s.camera)
+  useEffect(() => {
+    const h = screenH / (2 * TAN_HALF_FOV)
+    camera.position.set(0, h, 0.001)
+    if (controlsRef?.current) {
+      controlsRef.current.target.set(0, 0, 0)
+      controlsRef.current.update()
+    }
+  }, [camera, screenH, controlsRef])
+  return null
+}
 
 export default function App() {
+  const controlsRef = useRef()
+
   const { windSpeed, windStrength } = useControls('Grass', {
     windSpeed:    { value: 1.2, min: 0, max: 5,   step: 0.1 },
     windStrength: { value: 1.0, min: 0, max: 3,   step: 0.1 },
@@ -31,21 +51,37 @@ export default function App() {
     blobSize:     { value: 1.0,  min: 0.1, max: 3.0, step: 0.05, label: 'Blob Size'       },
     blobOpacity:  { value: 1.0,  min: 0,   max: 1,   step: 0.05, label: 'Blob Opacity'    },
   })
+  const { screenSize, showGrid, showBorder } = useControls('View', {
+    screenSize:  { value: '55"', options: SCREEN_SIZE_LABELS, label: 'Screen Size' },
+    showGrid:    { value: false, label: 'Show Grid' },
+    showBorder:  { value: true,  label: 'Show Border' },
+    reCenter:    button(() => {
+      if (controlsRef.current) {
+        controlsRef.current.target.set(0, 0, 0)
+        controlsRef.current.update()
+      }
+    }, { label: 'Re-center' }),
+  })
+
+  const screenDims = SCREEN_SIZES[screenSize]
+  const fieldSize  = Math.ceil(Math.max(screenDims.w, screenDims.h)) + 8
 
   const useSoftShadows = shadowMode === 'Soft Shadows' || shadowMode === 'Soft Shadows + SSAO'
   const useSSAO        = shadowMode === 'SSAO'         || shadowMode === 'Soft Shadows + SSAO'
   const showBlobs      = shadowMode === 'Blob'
 
+  // Initial camera height for 55" screen (default)
+  const initH = SCREEN_SIZES['55"'].h / (2 * TAN_HALF_FOV)
+
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#8fafb8', cursor: paintMode ? 'none' : 'auto' }}>
-      {/* shadows prop on Canvas means shadowMap.enabled=true from the very first frame,
-          so every material compiles with USE_SHADOWMAP — no runtime recompile needed.
-          The directional light's castShadow flag controls whether shadows actually render. */}
       <Canvas
         shadows
-        camera={{ position: [0, 24, 6], fov: 45, near: 0.1, far: 200 }}
+        camera={{ position: [0, initH, 0.001], fov: 45, near: 0.1, far: 300 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
       >
+        <CameraController screenH={screenDims.h} controlsRef={controlsRef} />
+
         {useSoftShadows && (
           <directionalLight
             castShadow
@@ -68,13 +104,13 @@ export default function App() {
 
         <Suspense fallback={null}>
           <Ground
-              receiveShadow={useSoftShadows}
-              paintMode={paintMode}
-              brushRadius={brushRadius}
-              brushOpacity={brushOpacity}
-              eraseMode={eraseMode}
-              selectedTexture={selectedTexture}
-            />
+            receiveShadow={useSoftShadows}
+            paintMode={paintMode}
+            brushRadius={brushRadius}
+            brushOpacity={brushOpacity}
+            eraseMode={eraseMode}
+            selectedTexture={selectedTexture}
+          />
           <Scatter
             windSpeed={windSpeed}
             windStrength={windStrength}
@@ -82,10 +118,12 @@ export default function App() {
             usePCSS={useSoftShadows}
             blobSize={blobSize}
             blobOpacity={blobOpacity}
+            fieldSize={fieldSize}
           />
+          <BattleGrid screenW={screenDims.w} screenH={screenDims.h} visible={showGrid} showBorder={showBorder} />
         </Suspense>
 
-        <Rain intensity={rainIntensity} />
+        <Rain intensity={rainIntensity} fieldSize={fieldSize} />
 
         {useSSAO && (
           <EffectComposer>
@@ -101,12 +139,13 @@ export default function App() {
         )}
 
         <OrbitControls
+          ref={controlsRef}
           enabled={!paintMode}
           target={[0, 0, 0]}
-          minPolarAngle={Math.PI / 6}
-          maxPolarAngle={Math.PI / 2.4}
-          minDistance={8}
-          maxDistance={45}
+          minPolarAngle={0}
+          maxPolarAngle={0}
+          minDistance={4}
+          maxDistance={300}
           enablePan
           panSpeed={0.6}
           dampingFactor={0.08}
