@@ -155,6 +155,7 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, selec
           key={def.label}
           rotation={ROAD_ROT}
           position={[0, -0.019 + i * 0.001, 0]}
+          renderOrder={i - 4}
         >
           <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
           <meshStandardMaterial
