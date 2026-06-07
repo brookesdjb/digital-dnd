@@ -1,0 +1,41 @@
+- generic [ref=e7]:
+  - generic [ref=e8]:
+    - img [ref=e10] [cursor=pointer]
+    - img [ref=e13]
+    - img [ref=e21] [cursor=pointer]
+  - textbox "[Open filter with CMD+SHIFT+L]" [ref=e24]
+  - generic [ref=e26]:
+    - generic [ref=e27]:
+      - generic [ref=e28] [cursor=pointer]:
+        - img [ref=e29]
+        - generic [ref=e31]: Grass
+      - generic [ref=e33]:
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - generic "windSpeed" [ref=e37]
+            - generic "Click to copy windSpeed value"
+          - textbox "windSpeed" [ref=e44]: "1.2"
+        - generic [ref=e46]:
+          - generic [ref=e47]:
+            - generic "windStrength" [ref=e48]
+            - generic "Click to copy windStrength value"
+          - textbox "windStrength" [ref=e55]: "1.0"
+        - generic [ref=e57]:
+          - generic [ref=e58]:
+            - generic "baseColor" [ref=e59]
+            - generic "Click to copy baseColor value"
+          - textbox "baseColor" [ref=e63]: "#3a5c1a"
+        - generic [ref=e65]:
+          - generic [ref=e66]:
+            - generic "tipColor" [ref=e67]
+            - generic "Click to copy tipColor value"
+          - textbox "tipColor" [ref=e71]: "#a8c45a"
+    - generic [ref=e72]:
+      - generic [ref=e73] [cursor=pointer]:
+        - img [ref=e74]
+        - generic [ref=e76]: Weather
+      - generic [ref=e80]:
+        - generic [ref=e81]:
+          - generic "Rain" [ref=e82]
+          - generic "Click to copy Rain value"
+        - textbox "Rain" [ref=e89]: "1.00"
