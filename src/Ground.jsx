@@ -12,7 +12,7 @@ const ROAD_ROT    = [-Math.PI / 2, 0, 0]
 // so we write to all channels to keep the texture grayscale-compatible.
 function applyBrush(uvX, uvY, radiusWorld, data, tex, erase) {
   const cx  = Math.floor(uvX * MASK_SIZE)
-  const cy  = Math.floor((1 - uvY) * MASK_SIZE)   // flip Y to match Three UV convention
+  const cy  = Math.floor(uvY * MASK_SIZE)   // DataTexture flipY=false: row 0 = UV.y=0, no flip needed
   const rPx = Math.max(2, Math.floor((radiusWorld / GROUND_SIZE) * MASK_SIZE))
 
   for (let dy = -rPx; dy <= rPx; dy++) {
