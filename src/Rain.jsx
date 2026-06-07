@@ -2,9 +2,9 @@ import { useRef, useMemo, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
-const FIELD = 32
-const STREAK_COUNT = 6000
-const RIPPLE_COUNT = 500
+const BASE_FIELD         = 32
+const BASE_STREAK_COUNT  = 6000
+const BASE_RIPPLE_COUNT  = 500
 const FALL_SPEED = 9.0
 // Slight wind lean so streaks have a visible direction from above
 const WIND_X = 1.8
@@ -52,15 +52,19 @@ const RIPPLE_FRAG = /* glsl */`
 
 // ─── Rain streak (falling drop) ───────────────────────────────────────────────
 
-function RainStreaks({ intensity }) {
+function RainStreaks({ intensity, fieldSize }) {
   const ref = useRef()
   const dummy = useMemo(() => new THREE.Object3D(), [])
+  const fieldRef = useRef(fieldSize)
+  useEffect(() => { fieldRef.current = fieldSize }, [fieldSize])
 
-  const drops = useMemo(() => Array.from({ length: STREAK_COUNT }, () => ({
-    x: (Math.random() - 0.5) * FIELD,
+  const streakCount = useMemo(() => Math.round(BASE_STREAK_COUNT * fieldSize / BASE_FIELD), [fieldSize])
+
+  const drops = useMemo(() => Array.from({ length: streakCount }, () => ({
+    x: (Math.random() - 0.5) * fieldSize,
     y: Math.random() * 10,
-    z: (Math.random() - 0.5) * FIELD,
-  })), [])
+    z: (Math.random() - 0.5) * fieldSize,
+  })), [fieldSize, streakCount])
 
   // Geometry: thin cylinder leaned in wind direction
   const geo = useMemo(() => {
@@ -89,8 +93,8 @@ function RainStreaks({ intensity }) {
       d.z += WIND_Z * dt
       if (d.y < 0) {
         d.y = 7 + Math.random() * 7
-        d.x = (Math.random() - 0.5) * FIELD
-        d.z = (Math.random() - 0.5) * FIELD
+        d.x = (Math.random() - 0.5) * fieldRef.current
+        d.z = (Math.random() - 0.5) * fieldRef.current
       }
       dummy.position.set(d.x, d.y, d.z)
       dummy.updateMatrix()
@@ -100,21 +104,25 @@ function RainStreaks({ intensity }) {
   })
 
   return (
-    <instancedMesh ref={ref} args={[geo, mat, STREAK_COUNT]} frustumCulled={false} />
+    <instancedMesh ref={ref} args={[geo, mat, streakCount]} frustumCulled={false} />
   )
 }
 
 // ─── Ground ripples ───────────────────────────────────────────────────────────
 
-function GroundRipples({ intensity }) {
+function GroundRipples({ intensity, fieldSize }) {
   const ref = useRef()
   const dummy = useMemo(() => new THREE.Object3D(), [])
+  const fieldRef = useRef(fieldSize)
+  useEffect(() => { fieldRef.current = fieldSize }, [fieldSize])
 
-  const progress = useMemo(() => new Float32Array(RIPPLE_COUNT), [])
-  const ripples = useMemo(() => Array.from({ length: RIPPLE_COUNT }, () => ({
-    x: (Math.random() - 0.5) * FIELD,
-    z: (Math.random() - 0.5) * FIELD,
-  })), [])
+  const rippleCount = useMemo(() => Math.round(BASE_RIPPLE_COUNT * fieldSize / BASE_FIELD), [fieldSize])
+
+  const progress = useMemo(() => new Float32Array(rippleCount), [rippleCount])
+  const ripples = useMemo(() => Array.from({ length: rippleCount }, () => ({
+    x: (Math.random() - 0.5) * fieldSize,
+    z: (Math.random() - 0.5) * fieldSize,
+  })), [fieldSize, rippleCount])
 
   const mat = useMemo(() => new THREE.ShaderMaterial({
     vertexShader: RIPPLE_VERT,
@@ -133,7 +141,7 @@ function GroundRipples({ intensity }) {
   useEffect(() => {
     const mesh = ref.current
     if (!mesh) return
-    for (let i = 0; i < RIPPLE_COUNT; i++) {
+    for (let i = 0; i < rippleCount; i++) {
       progress[i] = Math.random()
       dummy.position.set(ripples[i].x, 0.02, ripples[i].z)
       dummy.scale.setScalar(1.1)
@@ -152,12 +160,12 @@ function GroundRipples({ intensity }) {
     const attr = mesh.geometry.attributes.aProgress
     let matrixDirty = false
 
-    for (let i = 0; i < RIPPLE_COUNT; i++) {
+    for (let i = 0; i < rippleCount; i++) {
       progress[i] += dt * 0.7 * Math.max(0.3, intensity)
       if (progress[i] >= 1.0) {
         progress[i] = 0
-        ripples[i].x = (Math.random() - 0.5) * FIELD
-        ripples[i].z = (Math.random() - 0.5) * FIELD
+        ripples[i].x = (Math.random() - 0.5) * fieldRef.current
+        ripples[i].z = (Math.random() - 0.5) * fieldRef.current
         dummy.position.set(ripples[i].x, 0.02, ripples[i].z)
         dummy.scale.setScalar(1.1)
         dummy.rotation.set(-Math.PI / 2, 0, 0)
@@ -173,7 +181,7 @@ function GroundRipples({ intensity }) {
   })
 
   return (
-    <instancedMesh ref={ref} args={[undefined, mat, RIPPLE_COUNT]} frustumCulled={false}>
+    <instancedMesh ref={ref} args={[undefined, mat, rippleCount]} frustumCulled={false}>
       <planeGeometry args={[1, 1]}>
         <instancedBufferAttribute
           attach="attributes-aProgress"
@@ -186,11 +194,11 @@ function GroundRipples({ intensity }) {
 
 // ─── Public component ─────────────────────────────────────────────────────────
 
-export function Rain({ intensity = 1.0 }) {
+export function Rain({ intensity = 1.0, fieldSize = BASE_FIELD }) {
   return (
     <>
-      <RainStreaks intensity={intensity} />
-      <GroundRipples intensity={intensity} />
+      <RainStreaks intensity={intensity} fieldSize={fieldSize} />
+      <GroundRipples intensity={intensity} fieldSize={fieldSize} />
     </>
   )
 }

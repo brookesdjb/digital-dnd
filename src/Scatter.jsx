@@ -4,7 +4,6 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
 const BASE = '/models/kaykit/'
-const FIELD = 27
 
 const MODELS = [
   'BirchTree_1','BirchTree_2','BirchTree_3',
@@ -78,13 +77,13 @@ const SHADOW_SCALE = { tree: 2.4, dead: 1.6, bush: 1.1, cover: 0.65 }
 
 // ── scatter helper ────────────────────────────────────────────────────────────
 
-function scatter(count, minDist, existing = []) {
+function scatter(count, minDist, existing = [], field = 27) {
   const pts = []
   let tries = 0
   const all = [...existing, ...pts]
   while (pts.length < count && tries++ < count * 40) {
-    const x = (Math.random() - 0.5) * FIELD
-    const z = (Math.random() - 0.5) * FIELD
+    const x = (Math.random() - 0.5) * field
+    const z = (Math.random() - 0.5) * field
     const ok = all.every(p => Math.hypot(p.x - x, p.z - z) > minDist)
     if (ok) { const pt = { x, z, ry: Math.random() * Math.PI * 2 }; pts.push(pt); all.push(pt) }
   }
@@ -93,7 +92,7 @@ function scatter(count, minDist, existing = []) {
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function Scatter({ windSpeed = 1.4, windStrength = 1.0, showBlobs = true, usePCSS = false, blobSize = 1.0, blobOpacity = 1.0 }) {
+export function Scatter({ windSpeed = 1.4, windStrength = 1.0, showBlobs = true, usePCSS = false, blobSize = 1.0, blobOpacity = 1.0, fieldSize = 27 }) {
   const b1 = useGLTF(`${BASE}BirchTree_1.gltf`).scene
   const b2 = useGLTF(`${BASE}BirchTree_2.gltf`).scene
   const b3 = useGLTF(`${BASE}BirchTree_3.gltf`).scene
@@ -130,19 +129,26 @@ export function Scatter({ windSpeed = 1.4, windStrength = 1.0, showBlobs = true,
   const coverVariants = [gl, gs, fl, f2]
 
   const instances = useMemo(() => {
-    const treePts  = scatter(16, 2.8)
-    const deadPts  = scatter(6,  2.5, treePts)
-    const bushPts  = scatter(30, 1.2, [...treePts, ...deadPts])
-    const coverPts = scatter(50, 0.6)
+    // Scale instance counts with area so density stays roughly consistent
+    const scale    = Math.max(1, fieldSize / 27)
+    const nTree    = Math.round(16 * scale)
+    const nDead    = Math.round(6  * scale)
+    const nBush    = Math.round(30 * scale)
+    const nCover   = Math.round(50 * scale)
+
+    const treePts  = scatter(nTree,  2.8, [],                        fieldSize)
+    const deadPts  = scatter(nDead,  2.5, treePts,                   fieldSize)
+    const bushPts  = scatter(nBush,  1.2, [...treePts, ...deadPts],  fieldSize)
+    const coverPts = scatter(nCover, 0.6, [],                        fieldSize)
 
     return [
-      ...treePts.map((p, i)  => ({ ...p, type: 'tree', src: treeVariants[i  % treeVariants.length],  s: 0.38 + Math.random() * 0.18 })),
-      ...deadPts.map((p, i)  => ({ ...p, type: 'dead', src: deadVariants[i  % deadVariants.length],  s: 0.32 + Math.random() * 0.15 })),
-      ...bushPts.map((p, i)  => ({ ...p, type: 'bush', src: bushVariants[i  % bushVariants.length],  s: 0.55 + Math.random() * 0.25 })),
-      ...coverPts.map((p, i) => ({ ...p, type: 'cover', src: coverVariants[i % coverVariants.length], s: 0.9 + Math.random() * 0.5  })),
+      ...treePts.map((p, i)  => ({ ...p, type: 'tree',  src: treeVariants[i  % treeVariants.length],  s: 0.38 + Math.random() * 0.18 })),
+      ...deadPts.map((p, i)  => ({ ...p, type: 'dead',  src: deadVariants[i  % deadVariants.length],  s: 0.32 + Math.random() * 0.15 })),
+      ...bushPts.map((p, i)  => ({ ...p, type: 'bush',  src: bushVariants[i  % bushVariants.length],  s: 0.55 + Math.random() * 0.25 })),
+      ...coverPts.map((p, i) => ({ ...p, type: 'cover', src: coverVariants[i % coverVariants.length], s: 0.9  + Math.random() * 0.5  })),
     ]
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [fieldSize])
 
   const clones = useMemo(() =>
     instances.map((inst, i) => {
