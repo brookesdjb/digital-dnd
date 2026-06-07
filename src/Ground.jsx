@@ -183,7 +183,7 @@ function applyBrush(uvX, uvY, radiusWorld, data, tex, erase, opacity) {
   tex.needsUpdate = true
 }
 
-export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brushOpacity, selectedTexture }) {
+export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brushOpacity, selectedTexture, ioRef }) {
   // ── one mask per texture layer ───────────────────────────────────────────────
   const masks = useMemo(() =>
     ROAD_TEXTURES.map(() => {
@@ -195,11 +195,19 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
     })
   , [])
 
-  // ── save / load buttons (merged into the Road Painting leva panel) ──────────
-  useControls('Road Painting', {
-    'Save Map': button(() => saveMap(masks)),
-    'Load Map': button(() => loadMap(masks)),
-  })
+  // ── expose save / load to parent via ioRef ───────────────────────────────────
+  useEffect(() => {
+    if (!ioRef) return
+    ioRef.current = {
+      save: () => Promise.all(masks.map(m => encodeMask(m.data))),
+      load: async (layers) => {
+        masks.forEach(m => { m.data.fill(0); m.tex.needsUpdate = true })
+        await Promise.all(
+          layers.slice(0, masks.length).map((url, i) => decodeMask(url, masks[i]))
+        )
+      },
+    }
+  }, [ioRef, masks])
 
   // ── painting state ───────────────────────────────────────────────────────────
   const isPainting = useRef(false)

@@ -15,15 +15,16 @@ const MODELS = [
 ]
 MODELS.forEach(m => useGLTF.preload(`${BASE}${m}.gltf`))
 
-// ── shared wind uniforms ──────────────────────────────────────────────────────
+// ── shared wind uniforms ─────────────────────────────────────────────────────
+// Exported so ObjectPainter can apply the same wind to manually placed grass.
 
-const grassWindUniforms = {
+export const grassWindUniforms = {
   uTime:         { value: 0 },
   uWindSpeed:    { value: 1.4 },
   uWindStrength: { value: 1.0 },
 }
 
-function applyGrassWind(material) {
+export function applyGrassWind(material) {
   if (material._windApplied) return
   material._windApplied = true
   material.onBeforeCompile = (shader) => {
@@ -49,7 +50,7 @@ function applyGrassWind(material) {
   material.needsUpdate = true
 }
 
-function applyWindToGrassScene(scene) {
+export function applyWindToGrassScene(scene) {
   scene.traverse(child => {
     if (!child.isMesh) return
     const mats = Array.isArray(child.material) ? child.material : [child.material]
@@ -121,6 +122,12 @@ export function Scatter({ windSpeed = 1.4, windStrength = 1.0, showBlobs = true,
     transparent: true,
     depthWrite: false,
     color: 0x000000,
+    stencilWrite: true,
+    stencilRef:   1,
+    stencilFunc:  THREE.NotEqualStencilFunc,
+    stencilFail:  THREE.KeepStencilOp,
+    stencilZFail: THREE.KeepStencilOp,
+    stencilZPass: THREE.ReplaceStencilOp,
   }), [shadowTex])
 
   const treeVariants = [b1, b2, b3, m1, m2]

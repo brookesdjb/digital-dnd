@@ -86,7 +86,7 @@ function RainStreaks({ intensity, fieldSize }) {
     const mesh = ref.current
     if (!mesh) return
     mat.opacity = intensity * 0.38
-    for (let i = 0; i < STREAK_COUNT; i++) {
+    for (let i = 0; i < streakCount; i++) {
       const d = drops[i]
       d.y -= FALL_SPEED * dt
       d.x += WIND_X * dt
@@ -110,13 +110,17 @@ function RainStreaks({ intensity, fieldSize }) {
 
 // ─── Ground ripples ───────────────────────────────────────────────────────────
 
-function GroundRipples({ intensity, fieldSize }) {
+// Two instances of GroundRipples are rendered with phaseOffset 0 and 0.5 so
+// one group is always in the first half of the animation cycle and the other
+// in the second half — prevents all ripples syncing up visually.
+function GroundRipples({ intensity, fieldSize, phaseOffset = 0 }) {
   const ref = useRef()
   const dummy = useMemo(() => new THREE.Object3D(), [])
   const fieldRef = useRef(fieldSize)
   useEffect(() => { fieldRef.current = fieldSize }, [fieldSize])
 
-  const rippleCount = useMemo(() => Math.round(BASE_RIPPLE_COUNT * fieldSize / BASE_FIELD), [fieldSize])
+  // Half count per group — two instances keep the total the same
+  const rippleCount = useMemo(() => Math.round(BASE_RIPPLE_COUNT * fieldSize / BASE_FIELD / 2), [fieldSize])
 
   const progress = useMemo(() => new Float32Array(rippleCount), [rippleCount])
   const ripples = useMemo(() => Array.from({ length: rippleCount }, () => ({
@@ -137,12 +141,15 @@ function GroundRipples({ intensity, fieldSize }) {
     mat.uniforms.uIntensity.value = intensity
   }, [intensity, mat])
 
-  // Stagger initial phases so ripples don't all start together
+  // Stagger initial phases within this group's half of the 0-1 cycle.
+  // Group A (phaseOffset=0.0): phases 0.0–0.5
+  // Group B (phaseOffset=0.5): phases 0.5–1.0
+  // Deps include rippleCount/progress/ripples so this re-runs when fieldSize changes.
   useEffect(() => {
     const mesh = ref.current
     if (!mesh) return
     for (let i = 0; i < rippleCount; i++) {
-      progress[i] = Math.random()
+      progress[i] = phaseOffset + Math.random() * 0.5
       dummy.position.set(ripples[i].x, 0.02, ripples[i].z)
       dummy.scale.setScalar(1.1)
       dummy.rotation.set(-Math.PI / 2, 0, 0)
@@ -150,7 +157,7 @@ function GroundRipples({ intensity, fieldSize }) {
       mesh.setMatrixAt(i, dummy.matrix)
     }
     mesh.instanceMatrix.needsUpdate = true
-  }, [])
+  }, [rippleCount, progress, ripples, dummy, phaseOffset])
 
   useFrame((_, dt) => {
     const mesh = ref.current
@@ -198,7 +205,8 @@ export function Rain({ intensity = 1.0, fieldSize = BASE_FIELD }) {
   return (
     <>
       <RainStreaks intensity={intensity} fieldSize={fieldSize} />
-      <GroundRipples intensity={intensity} fieldSize={fieldSize} />
+      <GroundRipples intensity={intensity} fieldSize={fieldSize} phaseOffset={0.0} />
+      <GroundRipples intensity={intensity} fieldSize={fieldSize} phaseOffset={0.5} />
     </>
   )
 }
