@@ -6,13 +6,37 @@ import * as THREE from 'three'
 const GROUND_SIZE = 80
 const MASK_SIZE   = 512
 const ROAD_ROT    = [-Math.PI / 2, 0, 0]
+const ROAD_REPEAT = 20
 
-// Paint or erase into the mask DataTexture at the given UV position.
-// Uses RGBA layout (4 bytes/pixel) — Three.js alphaMap reads the .g channel,
-// so we write to all channels to keep the texture grayscale-compatible.
+export const ROAD_TEXTURES = [
+  { label: 'Ground Stones',
+    color:  '/textures/ground_stones_02_2k/ground_stones_02_basecolor_2k.png',
+    rough:  '/textures/ground_stones_02_2k/ground_stones_02_roughness_2k.png',
+    normal: '/textures/ground_stones_02_2k/ground_stones_02_normal_gl_2k.png' },
+  { label: 'Ground 03',
+    color:  '/textures/ground_03_2k/ground_03_color_2k.png',
+    rough:  '/textures/ground_03_2k/ground_03_roughness_2k.png',
+    normal: '/textures/ground_03_2k/ground_03_normal_gl_2k.png' },
+  { label: 'Ground Tiles 22',
+    color:  '/textures/ground_tiles_22_2k/ground_tiles_22_baseColor_2k.png',
+    rough:  '/textures/ground_tiles_22_2k/ground_tiles_22_roughness_2k.png',
+    normal: '/textures/ground_tiles_22_2k/ground_tiles_22_normal_gl_2k.png' },
+  { label: 'Ground Tiles 04',
+    color:  '/textures/ground_tiles_04_2k/ground_tiles_04_color_2k.png',
+    rough:  '/textures/ground_tiles_04_2k/ground_tiles_04_roughness_2k.png',
+    normal: '/textures/ground_tiles_04_2k/ground_tiles_04_normal_gl_2k.png' },
+]
+
+export const ROAD_TEXTURE_LABELS = ROAD_TEXTURES.map(t => t.label)
+
+// Flat path list for a single useTexture call — order: [color, rough, normal] × N textures
+const ALL_ROAD_PATHS = ROAD_TEXTURES.flatMap(t => [t.color, t.rough, t.normal])
+
+// Paint or erase into a mask DataTexture at the given UV position.
+// RGBA layout (4 bytes/pixel) — Three.js alphaMap reads the .g channel.
 function applyBrush(uvX, uvY, radiusWorld, data, tex, erase) {
   const cx  = Math.floor(uvX * MASK_SIZE)
-  const cy  = Math.floor(uvY * MASK_SIZE)   // DataTexture flipY=false: row 0 = UV.y=0, no flip needed
+  const cy  = Math.floor(uvY * MASK_SIZE)   // DataTexture flipY=false: row 0 = UV.y=0
   const rPx = Math.max(2, Math.floor((radiusWorld / GROUND_SIZE) * MASK_SIZE))
 
   for (let dy = -rPx; dy <= rPx; dy++) {
@@ -25,32 +49,30 @@ function applyBrush(uvX, uvY, radiusWorld, data, tex, erase) {
       const py = cy + dy
       if (px < 0 || px >= MASK_SIZE || py < 0 || py >= MASK_SIZE) continue
       const base = (py * MASK_SIZE + px) * 4
-      const cur  = data[base + 1]  // read from G channel
+      const cur  = data[base + 1]
       const next = erase
         ? Math.max(0,   cur - Math.floor(falloff * 180))
         : Math.min(255, cur + Math.floor(falloff * 180))
       data[base]   = next   // R
       data[base+1] = next   // G  ← alphaMap reads this
       data[base+2] = next   // B
-      data[base+3] = 255    // A  (texture alpha, not surface opacity)
+      data[base+3] = 255    // A
     }
   }
   tex.needsUpdate = true
 }
 
-export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode }) {
-  // ── road mask (RGBA, 4 bytes/pixel — Three.js alphaMap reads .g) ────────────
-  const maskData = useRef(new Uint8Array(MASK_SIZE * MASK_SIZE * 4))
-  const maskTex  = useMemo(() => {
-    const t = new THREE.DataTexture(
-      maskData.current, MASK_SIZE, MASK_SIZE,
-      THREE.RGBAFormat, THREE.UnsignedByteType
-    )
-    t.minFilter   = THREE.LinearFilter
-    t.magFilter   = THREE.LinearFilter
-    t.needsUpdate = true
-    return t
-  }, [])
+export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, selectedTexture }) {
+  // ── one mask per texture layer ───────────────────────────────────────────────
+  const masks = useMemo(() =>
+    ROAD_TEXTURES.map(() => {
+      const data = new Uint8Array(MASK_SIZE * MASK_SIZE * 4)
+      const tex  = new THREE.DataTexture(data, MASK_SIZE, MASK_SIZE, THREE.RGBAFormat, THREE.UnsignedByteType)
+      tex.minFilter = tex.magFilter = THREE.LinearFilter
+      tex.needsUpdate = true
+      return { data, tex }
+    })
+  , [])
 
   // ── painting state ───────────────────────────────────────────────────────────
   const isPainting = useRef(false)
@@ -69,47 +91,45 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode }) {
     '/textures/moss_ground_03_2k/moss_groud_03_Roughness_2k.png',
     '/textures/moss_ground_03_2k/moss_groud_03_Normal_gl_2k.png',
   ])
-  const [roadColor, roadRough, roadNormal] = useTexture([
-    '/textures/ground_stones_02_2k/ground_stones_02_basecolor_2k.png',
-    '/textures/ground_stones_02_2k/ground_stones_02_roughness_2k.png',
-    '/textures/ground_stones_02_2k/ground_stones_02_normal_gl_2k.png',
-  ])
+  // All road textures in one Suspense-friendly call: [color0, rough0, norm0, color1, ...]
+  const roadTextures = useTexture(ALL_ROAD_PATHS)
 
   useMemo(() => {
     ;[grassColor, grassRough, grassNormal].forEach(t => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping
       t.repeat.set(12, 12)
     })
-    ;[roadColor, roadRough, roadNormal].forEach(t => {
+    roadTextures.forEach(t => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping
-      t.repeat.set(20, 20)
+      t.repeat.set(ROAD_REPEAT, ROAD_REPEAT)
     })
-  }, [grassColor, grassRough, grassNormal, roadColor, roadRough, roadNormal])
+  }, [grassColor, grassRough, grassNormal, roadTextures])
 
   // ── pointer handlers ─────────────────────────────────────────────────────────
   const handlePointerDown = useCallback((e) => {
     if (!paintMode) return
     e.stopPropagation()
     isPainting.current = true
-    if (e.uv) applyBrush(e.uv.x, e.uv.y, brushRadius, maskData.current, maskTex, eraseMode)
-  }, [paintMode, brushRadius, eraseMode, maskTex])
+    const idx = ROAD_TEXTURES.findIndex(t => t.label === selectedTexture)
+    if (e.uv && idx >= 0) applyBrush(e.uv.x, e.uv.y, brushRadius, masks[idx].data, masks[idx].tex, eraseMode)
+  }, [paintMode, brushRadius, eraseMode, masks, selectedTexture])
 
   const handlePointerMove = useCallback((e) => {
     if (!paintMode) return
     e.stopPropagation()
     cursorPos.current.copy(e.point)
     if (isPainting.current && e.uv) {
-      applyBrush(e.uv.x, e.uv.y, brushRadius, maskData.current, maskTex, eraseMode)
+      const idx = ROAD_TEXTURES.findIndex(t => t.label === selectedTexture)
+      if (idx >= 0) applyBrush(e.uv.x, e.uv.y, brushRadius, masks[idx].data, masks[idx].tex, eraseMode)
     }
-  }, [paintMode, brushRadius, eraseMode, maskTex])
+  }, [paintMode, brushRadius, eraseMode, masks, selectedTexture])
 
-  // ── cursor ring via useFrame (no state update on every move) ─────────────────
+  // ── cursor ring ──────────────────────────────────────────────────────────────
   useFrame(() => {
     if (!cursorRef.current) return
     cursorRef.current.visible = paintMode
     if (paintMode) {
       cursorRef.current.position.set(cursorPos.current.x, 0.03, cursorPos.current.z)
-      // scale a unit ring to match current brush size
       cursorRef.current.scale.set(brushRadius, brushRadius, 1)
     }
   })
@@ -117,11 +137,7 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode }) {
   return (
     <>
       {/* ── grass base ──────────────────────────────────────────────────────── */}
-      <mesh
-        rotation={ROAD_ROT}
-        position={[0, -0.02, 0]}
-        receiveShadow={receiveShadow}
-      >
+      <mesh rotation={ROAD_ROT} position={[0, -0.02, 0]} receiveShadow={receiveShadow}>
         <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
         <meshStandardMaterial
           map={grassColor}
@@ -131,30 +147,39 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode }) {
         />
       </mesh>
 
-      {/* ── road overlay (alphaMap = painted mask) ───────────────────────────── */}
-      {/* Sits at y=-0.015 (above grass) so the raycaster hits it first — */}
-      {/* pointer handlers live here so e.uv is always available.           */}
+      {/* ── one overlay per texture, each with its own painted mask ─────────── */}
+      {ROAD_TEXTURES.map((def, i) => (
+        <mesh
+          key={def.label}
+          rotation={ROAD_ROT}
+          position={[0, -0.015, 0]}
+          renderOrder={10 + i}
+        >
+          <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
+          <meshStandardMaterial
+            map={roadTextures[i * 3]}
+            roughnessMap={roadTextures[i * 3 + 1]}
+            normalMap={roadTextures[i * 3 + 2]}
+            alphaMap={masks[i].tex}
+            transparent
+            depthWrite={false}
+            roughness={0.9}
+          />
+        </mesh>
+      ))}
+
+      {/* ── transparent hit mesh on top — sole target for pointer events ─────── */}
       <mesh
         rotation={ROAD_ROT}
-        position={[0, -0.015, 0]}
-        receiveShadow={false}
+        position={[0, 0.01, 0]}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
       >
         <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
-        <meshStandardMaterial
-          map={roadColor}
-          roughnessMap={roadRough}
-          normalMap={roadNormal}
-          alphaMap={maskTex}
-          transparent
-          depthWrite={false}
-          roughness={0.9}
-        />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
       {/* ── brush cursor ring ────────────────────────────────────────────────── */}
-      {/* Unit ring (inner=0.88, outer=1) scaled to brushRadius in world space */}
       <mesh ref={cursorRef} rotation={ROAD_ROT} visible={false}>
         <ringGeometry args={[0.88, 1, 64]} />
         <meshBasicMaterial

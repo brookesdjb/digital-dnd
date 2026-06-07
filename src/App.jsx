@@ -6,7 +6,7 @@ import { useControls } from 'leva'
 import * as THREE from 'three'
 import { Rain } from './Rain'
 import { Scatter } from './Scatter'
-import { Ground } from './Ground'
+import { Ground, ROAD_TEXTURE_LABELS } from './Ground'
 
 export default function App() {
   const { windSpeed, windStrength } = useControls('Grass', {
@@ -16,10 +16,11 @@ export default function App() {
   const { rainIntensity } = useControls('Weather', {
     rainIntensity: { value: 1.0, min: 0, max: 2, step: 0.05, label: 'Rain' },
   })
-  const { paintMode, brushRadius, eraseMode } = useControls('Road Painting', {
-    paintMode:   { value: false, label: 'Paint Roads' },
-    eraseMode:   { value: false, label: 'Erase'       },
-    brushRadius: { value: 3, min: 0.5, max: 12, step: 0.25, label: 'Brush Size' },
+  const { paintMode, brushRadius, eraseMode, selectedTexture } = useControls('Road Painting', {
+    paintMode:       { value: false,                  label: 'Paint Roads' },
+    eraseMode:       { value: false,                  label: 'Erase'       },
+    selectedTexture: { value: ROAD_TEXTURE_LABELS[0], options: ROAD_TEXTURE_LABELS, label: 'Texture' },
+    brushRadius:     { value: 3, min: 0.5, max: 12, step: 0.25, label: 'Brush Size' },
   })
   const { shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity } = useControls('Shadows', {
     shadowMode:   { value: 'Blob', options: ['Blob', 'Soft Shadows', 'SSAO', 'Soft Shadows + SSAO'], label: 'Mode' },
@@ -70,6 +71,7 @@ export default function App() {
               paintMode={paintMode}
               brushRadius={brushRadius}
               eraseMode={eraseMode}
+              selectedTexture={selectedTexture}
             />
           <Scatter
             windSpeed={windSpeed}
