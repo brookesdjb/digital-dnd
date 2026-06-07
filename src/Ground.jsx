@@ -1,6 +1,7 @@
 import { useRef, useMemo, useCallback, useEffect } from 'react'
 import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
+import { useControls, button } from 'leva'
 import * as THREE from 'three'
 
 const GROUND_SIZE = 80
@@ -66,6 +67,83 @@ const N = ROAD_TEXTURES.length
 // Flat path list for a single useTexture call — order: [color, rough, normal] × N textures
 const ALL_ROAD_PATHS = ROAD_TEXTURES.flatMap(t => [t.color, t.rough, t.normal])
 
+// ── save / load helpers ───────────────────────────────────────────────────────
+
+// Encode a single mask's G-channel values into a grayscale PNG (base64 dataURL).
+// PNG compression handles the large zero regions very efficiently.
+function encodeMask(data) {
+  return new Promise(resolve => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = MASK_SIZE
+    const ctx = canvas.getContext('2d')
+    const img = ctx.createImageData(MASK_SIZE, MASK_SIZE)
+    for (let i = 0; i < MASK_SIZE * MASK_SIZE; i++) {
+      const v = data[i * 4 + 1]           // G channel is the painted value
+      img.data[i * 4]     = v
+      img.data[i * 4 + 1] = v
+      img.data[i * 4 + 2] = v
+      img.data[i * 4 + 3] = 255
+    }
+    ctx.putImageData(img, 0, 0)
+    canvas.toBlob(blob => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result)
+      reader.readAsDataURL(blob)
+    }, 'image/png')
+  })
+}
+
+async function saveMap(masks) {
+  const layers = await Promise.all(masks.map(m => encodeMask(m.data)))
+  const json   = JSON.stringify({ version: 1, textures: ROAD_TEXTURE_LABELS, layers })
+  const url    = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
+  const a      = Object.assign(document.createElement('a'), { href: url, download: 'terrain-map.json' })
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function decodeMask(dataUrl, mask) {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = canvas.height = MASK_SIZE
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, MASK_SIZE, MASK_SIZE)
+      const px = ctx.getImageData(0, 0, MASK_SIZE, MASK_SIZE).data
+      for (let i = 0; i < MASK_SIZE * MASK_SIZE; i++) {
+        const v = px[i * 4]               // R channel of the saved PNG
+        mask.data[i * 4]     = v
+        mask.data[i * 4 + 1] = v
+        mask.data[i * 4 + 2] = v
+        mask.data[i * 4 + 3] = 255
+      }
+      mask.tex.needsUpdate = true
+      resolve()
+    }
+    img.src = dataUrl
+  })
+}
+
+function loadMap(masks) {
+  const input  = document.createElement('input')
+  input.type   = 'file'
+  input.accept = '.json'
+  input.onchange = async e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const { layers } = JSON.parse(await file.text())
+      // Clear all masks then restore each saved layer
+      masks.forEach(m => { m.data.fill(0); m.tex.needsUpdate = true })
+      await Promise.all(layers.slice(0, masks.length).map((url, i) => decodeMask(url, masks[i])))
+    } catch (err) {
+      console.error('Failed to load terrain map:', err)
+    }
+  }
+  input.click()
+}
+
 // Paint or erase into a mask DataTexture at the given UV position.
 // RGBA layout (4 bytes/pixel) — Three.js alphaMap reads the .g channel.
 // opacity (0-1) caps the maximum painted value so the texture can be semi-transparent.
@@ -109,6 +187,12 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
       return { data, tex }
     })
   , [])
+
+  // ── save / load buttons (merged into the Road Painting leva panel) ──────────
+  useControls('Road Painting', {
+    'Save Map': button(() => saveMap(masks)),
+    'Load Map': button(() => loadMap(masks)),
+  })
 
   // ── painting state ───────────────────────────────────────────────────────────
   const isPainting = useRef(false)
