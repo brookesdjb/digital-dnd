@@ -325,19 +325,20 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 
 ---
 
-### Milestone 3 — Real-time Sync
+### Milestone 3 — Real-time Sync ✅
 
 **Goal:** control client changes appear on display client in real-time.
 
-- [ ] `useScenePublish` hook: publishes Realtime messages on state change (debounced)
-- [ ] `useSceneSync` hook: subscribes to Realtime channel, applies incoming messages to local state
-- [ ] Display client: full `STATE_SYNC` fetch from DB on connect/reconnect (drift prevention)
-- [ ] Terrain paint sync: `TERRAIN_UPDATE` / `TERRAIN_UPDATED`
-- [ ] Fog of War sync: `FOG_UPDATE` / `FOG_UPDATED`
-- [ ] Placed objects sync: `OBJECTS_UPDATE` / `OBJECTS_UPDATED`
-- [ ] Scene activate sync: `SCENE_ACTIVATE` / `SCENE_ACTIVATED`
-- [ ] Pause/resume sync: `PAUSE_TOGGLE` / `PAUSE_CHANGED`
-- [ ] `FORCE_FULL_SYNC`: control client can push full scene state; display requests on reconnect
+- [x] `useScenePublish` hook: publishes Realtime messages on state change (100ms debounce)
+- [x] `useSceneSync` hook: subscribes to Realtime channel, applies incoming messages to local state
+- [x] Display client: full scene fetch from DB on connect (drift prevention)
+- [x] Terrain paint sync: `TERRAIN_UPDATED` broadcast
+- [x] Placed objects sync: `OBJECTS_UPDATED` broadcast
+- [x] DisplayScene: rewritten — camera from screen dims in DB, PlacedObjectsRenderer for read-only objects
+- [ ] Fog of War sync — deferred to M4 (FogLayer not built yet)
+- [ ] Scene activate sync — deferred to M4 (scene list not built yet)
+- [ ] Pause/resume sync — deferred to M4 (pause feature not built yet)
+- [ ] `FORCE_FULL_SYNC` — deferred to M5 polish
 
 ---
 
