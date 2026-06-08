@@ -21,7 +21,7 @@ interface DisplaySceneProps {
 
 export default function DisplayScene({ tableId }: DisplaySceneProps) {
   const groundIO = useRef<GroundIO>(undefined)
-  const { objects, screenW, screenH, bgColor, weather } = useSceneSync(tableId, groundIO)
+  const { objects, screenW, screenH, bgColor, rainIntensity, showGrid } = useSceneSync(tableId, groundIO)
 
   const fieldSize = Math.ceil(Math.max(screenW, screenH)) + 8
   const initH     = screenH / (2 * Math.tan((DEFAULT_FOV * Math.PI / 180) / 2))
@@ -63,13 +63,13 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
           <BattleGrid
             screenW={screenW}
             screenH={screenH}
-            visible={false}
+            visible={showGrid}
             showBorder={true}
           />
           <PlacedObjectsRenderer objects={objects} showBlobs={true} />
         </Suspense>
 
-        <Rain intensity={weather === 'rain' ? 1.0 : 0} fieldSize={fieldSize} />
+        <Rain intensity={rainIntensity} fieldSize={fieldSize} />
       </Canvas>
     </div>
   )

@@ -286,7 +286,10 @@ export function Ground({
             normalMap={roadTextures[i * 3 + 2]}
             alphaMap={masks[i].tex}
             transparent
-            depthWrite
+            depthWrite={false}
+            polygonOffset
+            polygonOffsetFactor={-1}
+            polygonOffsetUnits={-4}
             roughness={0.9}
           />
         </mesh>

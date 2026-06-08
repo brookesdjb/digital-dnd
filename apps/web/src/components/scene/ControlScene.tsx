@@ -51,8 +51,8 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const objectsIO   = useRef<ObjectsIO>(undefined)
   const lightRef    = useRef<THREE.DirectionalLight>(null)
 
-  const { save, scheduleSave, sceneIdRef } = useSceneDB(tableId, groundIO, objectsIO)
-  const { schedulePublishTerrain, schedulePublishObjects } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO)
+  const { save, scheduleSave, sceneIdRef, setBgColor, screenW: dbScreenW, screenH: dbScreenH } = useSceneDB(tableId, groundIO, objectsIO)
+  const { schedulePublishTerrain, schedulePublishObjects, schedulePublishState } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO)
 
   const onTerrainChange = useCallback(() => { schedulePublishTerrain(); scheduleSave() }, [schedulePublishTerrain, scheduleSave])
   const onObjectsChange = useCallback(() => { schedulePublishObjects(); scheduleSave() }, [schedulePublishObjects, scheduleSave])
@@ -115,8 +115,18 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     fogDensity:     { value: 0.012, min: 0, max: 0.06, step: 0.001, label: 'Fog Density' },
   })
 
+  // Keep the DB save ref in sync with the current bgColor leva value
+  useEffect(() => { setBgColor(bgColor) }, [bgColor, setBgColor])
+
+  // Broadcast live scene-state changes to the display view
+  useEffect(() => {
+    schedulePublishState({ showGrid, rainIntensity, bgColor })
+  }, [showGrid, rainIntensity, bgColor, schedulePublishState])
+
   const screenDims = SCREEN_SIZES[screenSize]
-  const fieldSize  = Math.ceil(Math.max(screenDims.w, screenDims.h)) + 8
+  // fieldSize drives Scatter seeding and Rain — use DB dims so control matches display.
+  // screenDims drives camera height and BattleGrid (DM can choose their view zoom).
+  const fieldSize  = Math.ceil(Math.max(dbScreenW, dbScreenH)) + 8
 
   const useSoftShadows = shadowMode === 'Soft Shadows' || shadowMode === 'Soft Shadows + SSAO'
   const useSSAO        = shadowMode === 'SSAO'         || shadowMode === 'Soft Shadows + SSAO'

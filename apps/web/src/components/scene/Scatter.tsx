@@ -189,7 +189,18 @@ function makeBlobTexture() {
 
 const SHADOW_SCALE: Record<string, number> = { tree: 2.4, dead: 1.6, bush: 1.1, cover: 0.65 }
 
-// ── scatter helper ────────────────────────────────────────────────────────────
+// ── scatter helpers ───────────────────────────────────────────────────────────
+
+// Mulberry32 seeded PRNG — deterministic so control and display get identical vegetation.
+function seededRng(seed: number): () => number {
+  let s = seed
+  return () => {
+    s = (s + 0x6D2B79F5) | 0
+    let t = Math.imul(s ^ (s >>> 15), 1 | s)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 0x100000000
+  }
+}
 
 interface ScatterPoint {
   x: number
@@ -197,15 +208,15 @@ interface ScatterPoint {
   ry: number
 }
 
-function scatter(count: number, minDist: number, existing: ScatterPoint[] = [], field = 27): ScatterPoint[] {
+function scatter(count: number, minDist: number, existing: ScatterPoint[], field: number, rng: () => number): ScatterPoint[] {
   const pts: ScatterPoint[] = []
   let tries = 0
-  const all = [...existing, ...pts]
+  const all = [...existing]
   while (pts.length < count && tries++ < count * 40) {
-    const x = (Math.random() - 0.5) * field
-    const z = (Math.random() - 0.5) * field
+    const x = (rng() - 0.5) * field
+    const z = (rng() - 0.5) * field
     const ok = all.every(p => Math.hypot(p.x - x, p.z - z) > minDist)
-    if (ok) { const pt = { x, z, ry: Math.random() * Math.PI * 2 }; pts.push(pt); all.push(pt) }
+    if (ok) { const pt = { x, z, ry: rng() * Math.PI * 2 }; pts.push(pt); all.push(pt) }
   }
   return pts
 }
@@ -265,22 +276,23 @@ export function Scatter({
   type InstanceType = ScatterPoint & { type: string; src: THREE.Object3D; s: number }
 
   const instances = useMemo<InstanceType[]>(() => {
+    const rng    = seededRng(0x5CA77E8D)  // fixed seed — same result on control and display
     const scale  = Math.max(1, fieldSize / 27)
     const nTree  = Math.round(16 * scale)
     const nDead  = Math.round(6  * scale)
     const nBush  = Math.round(30 * scale)
     const nCover = Math.round(50 * scale)
 
-    const treePts  = scatter(nTree,  2.8, [],                        fieldSize)
-    const deadPts  = scatter(nDead,  2.5, treePts,                   fieldSize)
-    const bushPts  = scatter(nBush,  1.2, [...treePts, ...deadPts],  fieldSize)
-    const coverPts = scatter(nCover, 0.6, [],                        fieldSize)
+    const treePts  = scatter(nTree,  2.8, [],                        fieldSize, rng)
+    const deadPts  = scatter(nDead,  2.5, treePts,                   fieldSize, rng)
+    const bushPts  = scatter(nBush,  1.2, [...treePts, ...deadPts],  fieldSize, rng)
+    const coverPts = scatter(nCover, 0.6, [],                        fieldSize, rng)
 
     return [
-      ...treePts.map((p, i)  => ({ ...p, type: 'tree',  src: treeVariants[i  % treeVariants.length],  s: 0.38 + Math.random() * 0.18 })),
-      ...deadPts.map((p, i)  => ({ ...p, type: 'dead',  src: deadVariants[i  % deadVariants.length],  s: 0.32 + Math.random() * 0.15 })),
-      ...bushPts.map((p, i)  => ({ ...p, type: 'bush',  src: bushVariants[i  % bushVariants.length],  s: 0.55 + Math.random() * 0.25 })),
-      ...coverPts.map((p, i) => ({ ...p, type: 'cover', src: coverVariants[i % coverVariants.length], s: 0.9  + Math.random() * 0.5  })),
+      ...treePts.map((p, i)  => ({ ...p, type: 'tree',  src: treeVariants[i  % treeVariants.length],  s: 0.38 + rng() * 0.18 })),
+      ...deadPts.map((p, i)  => ({ ...p, type: 'dead',  src: deadVariants[i  % deadVariants.length],  s: 0.32 + rng() * 0.15 })),
+      ...bushPts.map((p, i)  => ({ ...p, type: 'bush',  src: bushVariants[i  % bushVariants.length],  s: 0.55 + rng() * 0.25 })),
+      ...coverPts.map((p, i) => ({ ...p, type: 'cover', src: coverVariants[i % coverVariants.length], s: 0.9  + rng() * 0.5  })),
     ]
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldSize])

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { ObjectsIO } from '@/components/scene/ObjectPainter'
@@ -10,45 +10,70 @@ export function useSceneDB(
   groundIO: React.RefObject<GroundIO | undefined>,
   objectsIO: React.RefObject<ObjectsIO | undefined>,
 ) {
-  const sceneIdRef = useRef<string | null>(null)
-  const saveTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const supabase   = createClient()
+  const sceneIdRef  = useRef<string | null>(null)
+  const saveTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const bgColorRef  = useRef<string>('#6a8fa8')
+  const [screenW, setScreenW] = useState(47.9)
+  const [screenH, setScreenH] = useState(27.0)
+  const supabase    = createClient()
 
   // Load active scene on mount
   useEffect(() => {
     let cancelled = false
     async function load() {
-      // Fetch table config and its active scene
-      const { data: table } = await supabase
+      // Two separate queries to avoid the ambiguous FK between table_config and scene.
+      // (scene.table_id → table_config.id AND table_config.active_scene_id → scene.id)
+      const { data: table, error: tableError } = await supabase
         .from('table_config')
-        .select('id, active_scene_id, scene(id, terrain, objects)')
+        .select('id, active_scene_id, screen_w_in, screen_h_in')
         .eq('id', tableId)
         .single()
 
+      if (tableError) console.error('useSceneDB: table_config fetch', tableError)
       if (cancelled || !table) return
 
-      let scene = (table.scene as unknown as { id: string; terrain: unknown; objects: unknown }[] | null)?.[0] ?? null
+      setScreenW(Number(table.screen_w_in))
+      setScreenH(Number(table.screen_h_in))
 
-      // Create a default scene if none exists
+      let scene: { id: string; terrain: unknown; objects: unknown; bg_color: string | null } | null = null
+      if (table.active_scene_id) {
+        const { data: sceneData, error: sceneError } = await supabase
+          .from('scene')
+          .select('id, terrain, objects, bg_color')
+          .eq('id', table.active_scene_id)
+          .single()
+        if (sceneError) console.error('useSceneDB: scene fetch', sceneError)
+        else scene = sceneData
+      }
+
+      if (cancelled) return
+
       if (!scene) {
-        const { data: newScene } = await supabase
+        // No active scene — create a default one
+        const { data: newScene, error: insertError } = await supabase
           .from('scene')
           .insert({ table_id: tableId, name: 'Scene 1' })
           .select('id')
           .single()
 
+        if (insertError) {
+          console.error('useSceneDB: scene insert', insertError)
+          return
+        }
         if (!newScene || cancelled) return
 
-        await supabase
+        const { error: updateError } = await supabase
           .from('table_config')
           .update({ active_scene_id: newScene.id })
           .eq('id', tableId)
+        if (updateError) console.error('useSceneDB: active_scene_id update', updateError)
 
         sceneIdRef.current = newScene.id
         return
       }
 
       sceneIdRef.current = scene.id
+      if (scene.bg_color) bgColorRef.current = scene.bg_color
 
       const terrain = scene.terrain as { layers?: string[] } | null
       const objects = scene.objects as unknown[] | null
@@ -74,16 +99,19 @@ export function useSceneDB(
     await supabase
       .from('scene')
       .update({
-        terrain: { layers: layers ?? [] },
+        terrain:  { layers: layers ?? [] },
         objects,
+        bg_color: bgColorRef.current,
       })
       .eq('id', sceneId)
   }, [groundIO, objectsIO, supabase])
+
+  const setBgColor = useCallback((c: string) => { bgColorRef.current = c }, [])
 
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(save, DEBOUNCE_MS)
   }, [save])
 
-  return { save, scheduleSave, sceneIdRef }
+  return { save, scheduleSave, sceneIdRef, setBgColor, screenW, screenH }
 }

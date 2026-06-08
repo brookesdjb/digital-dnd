@@ -6,6 +6,13 @@ import type { ObjectsIO } from '@/components/scene/ObjectPainter'
 
 const TERRAIN_DEBOUNCE_MS = 100
 const OBJECTS_DEBOUNCE_MS = 100
+const STATE_DEBOUNCE_MS   = 200
+
+export interface SceneState {
+  showGrid:      boolean
+  rainIntensity: number
+  bgColor:       string
+}
 
 export function useScenePublish(
   tableId: string,
@@ -17,6 +24,8 @@ export function useScenePublish(
   const channelRef   = useRef<RealtimeChannel | null>(null)
   const terrainTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const objectsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stateTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestState  = useRef<SceneState | null>(null)
 
   useEffect(() => {
     const ch = supabase.channel(`table:${tableId}`)
@@ -42,6 +51,14 @@ export function useScenePublish(
     ch.send({ type: 'broadcast', event: 'OBJECTS_UPDATED', payload: { sceneId, objects } })
   }, [sceneIdRef, objectsIO])
 
+  const publishState = useCallback(() => {
+    const sceneId = sceneIdRef.current
+    const ch = channelRef.current
+    const state = latestState.current
+    if (!sceneId || !ch || !state) return
+    ch.send({ type: 'broadcast', event: 'STATE_UPDATED', payload: { sceneId, ...state } })
+  }, [sceneIdRef])
+
   const schedulePublishTerrain = useCallback(() => {
     if (terrainTimer.current) clearTimeout(terrainTimer.current)
     terrainTimer.current = setTimeout(publishTerrain, TERRAIN_DEBOUNCE_MS)
@@ -52,5 +69,17 @@ export function useScenePublish(
     objectsTimer.current = setTimeout(publishObjects, OBJECTS_DEBOUNCE_MS)
   }, [publishObjects])
 
-  return { schedulePublishTerrain, schedulePublishObjects }
+  const schedulePublishState = useCallback((state: SceneState) => {
+    latestState.current = state
+    if (stateTimer.current) clearTimeout(stateTimer.current)
+    stateTimer.current = setTimeout(publishState, STATE_DEBOUNCE_MS)
+  }, [publishState])
+
+  // Re-broadcast state every 8s so displays that connect after the initial publish catch up.
+  useEffect(() => {
+    const id = setInterval(publishState, 8000)
+    return () => clearInterval(id)
+  }, [publishState])
+
+  return { schedulePublishTerrain, schedulePublishObjects, schedulePublishState }
 }
