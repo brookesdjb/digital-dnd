@@ -1,12 +1,14 @@
+'use client'
+
 import { useRef, useMemo, useCallback, useEffect } from 'react'
 import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import { useControls, button } from 'leva'
+import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 
 const GROUND_SIZE = 80
 const MASK_SIZE   = 512
-const ROAD_ROT    = [-Math.PI / 2, 0, 0]
+const ROAD_ROT    = [-Math.PI / 2, 0, 0] as const
 const ROAD_REPEAT = 20
 
 export const ROAD_TEXTURES = [
@@ -63,22 +65,20 @@ export const ROAD_TEXTURES = [
 export const ROAD_TEXTURE_LABELS = ROAD_TEXTURES.map(t => t.label)
 
 const N = ROAD_TEXTURES.length
-
-// Flat path list for a single useTexture call — order: [color, rough, normal] × N textures
 const ALL_ROAD_PATHS = ROAD_TEXTURES.flatMap(t => [t.color, t.rough, t.normal])
 
 // ── save / load helpers ───────────────────────────────────────────────────────
 
-// Encode a single mask's G-channel values into a grayscale PNG (base64 dataURL).
-// PNG compression handles the large zero regions very efficiently.
-function encodeMask(data) {
+interface Mask { data: Uint8Array; tex: THREE.DataTexture }
+
+function encodeMask(data: Uint8Array): Promise<string> {
   return new Promise(resolve => {
     const canvas = document.createElement('canvas')
     canvas.width = canvas.height = MASK_SIZE
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d')!
     const img = ctx.createImageData(MASK_SIZE, MASK_SIZE)
     for (let i = 0; i < MASK_SIZE * MASK_SIZE; i++) {
-      const v = data[i * 4 + 1]           // G channel is the painted value
+      const v = data[i * 4 + 1]
       img.data[i * 4]     = v
       img.data[i * 4 + 1] = v
       img.data[i * 4 + 2] = v
@@ -87,32 +87,23 @@ function encodeMask(data) {
     ctx.putImageData(img, 0, 0)
     canvas.toBlob(blob => {
       const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result)
-      reader.readAsDataURL(blob)
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.readAsDataURL(blob!)
     }, 'image/png')
   })
 }
 
-async function saveMap(masks) {
-  const layers = await Promise.all(masks.map(m => encodeMask(m.data)))
-  const json   = JSON.stringify({ version: 1, textures: ROAD_TEXTURE_LABELS, layers })
-  const url    = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
-  const a      = Object.assign(document.createElement('a'), { href: url, download: 'terrain-map.json' })
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function decodeMask(dataUrl, mask) {
+function decodeMask(dataUrl: string, mask: Mask): Promise<void> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
       const canvas = document.createElement('canvas')
       canvas.width = canvas.height = MASK_SIZE
-      const ctx = canvas.getContext('2d')
+      const ctx = canvas.getContext('2d')!
       ctx.drawImage(img, 0, 0, MASK_SIZE, MASK_SIZE)
       const px = ctx.getImageData(0, 0, MASK_SIZE, MASK_SIZE).data
       for (let i = 0; i < MASK_SIZE * MASK_SIZE; i++) {
-        const v = px[i * 4]               // R channel of the saved PNG
+        const v = px[i * 4]
         mask.data[i * 4]     = v
         mask.data[i * 4 + 1] = v
         mask.data[i * 4 + 2] = v
@@ -126,37 +117,15 @@ function decodeMask(dataUrl, mask) {
   })
 }
 
-function loadMap(masks) {
-  // Input must be in the DOM before .click() — browsers block programmatic
-  // file pickers that aren't triggered from a live DOM element.
-  const input  = document.createElement('input')
-  input.type   = 'file'
-  input.accept = '.json'
-  input.style.display = 'none'
-  document.body.appendChild(input)
-
-  input.onchange = async e => {
-    document.body.removeChild(input)
-    const file = e.target.files?.[0]
-    if (!file) return
-    try {
-      const { layers } = JSON.parse(await file.text())
-      masks.forEach(m => { m.data.fill(0); m.tex.needsUpdate = true })
-      await Promise.all(layers.slice(0, masks.length).map((url, i) => decodeMask(url, masks[i])))
-    } catch (err) {
-      console.error('Failed to load terrain map:', err)
-    }
-  }
-
-  input.click()
-}
-
 // Paint or erase into a mask DataTexture at the given UV position.
 // RGBA layout (4 bytes/pixel) — Three.js alphaMap reads the .g channel.
-// opacity (0-1) caps the maximum painted value so the texture can be semi-transparent.
-function applyBrush(uvX, uvY, radiusWorld, data, tex, erase, opacity) {
+function applyBrush(
+  uvX: number, uvY: number, radiusWorld: number,
+  data: Uint8Array, tex: THREE.DataTexture,
+  erase: boolean, opacity: number,
+) {
   const cx     = Math.floor(uvX * MASK_SIZE)
-  const cy     = Math.floor(uvY * MASK_SIZE)   // DataTexture flipY=false: row 0 = UV.y=0
+  const cy     = Math.floor(uvY * MASK_SIZE)
   const rPx    = Math.max(2, Math.floor((radiusWorld / GROUND_SIZE) * MASK_SIZE))
   const maxVal = erase ? 0 : Math.floor(opacity * 255)
 
@@ -165,7 +134,7 @@ function applyBrush(uvX, uvY, radiusWorld, data, tex, erase, opacity) {
       const d = Math.sqrt(dx * dx + dy * dy)
       if (d > rPx) continue
       const t       = 1 - d / rPx
-      const falloff = t * t * (3 - 2 * t)   // smoothstep — soft brush edge
+      const falloff = t * t * (3 - 2 * t)
       const px = cx + dx
       const py = cy + dy
       if (px < 0 || px >= MASK_SIZE || py < 0 || py >= MASK_SIZE) continue
@@ -174,18 +143,38 @@ function applyBrush(uvX, uvY, radiusWorld, data, tex, erase, opacity) {
       const next = erase
         ? Math.max(0,      cur - Math.floor(falloff * 180))
         : Math.min(maxVal, cur + Math.floor(falloff * 180))
-      data[base]   = next   // R
-      data[base+1] = next   // G  ← alphaMap reads this
-      data[base+2] = next   // B
-      data[base+3] = 255    // A
+      data[base]   = next
+      data[base+1] = next
+      data[base+2] = next
+      data[base+3] = 255
     }
   }
   tex.needsUpdate = true
 }
 
-export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brushOpacity, selectedTexture, ioRef }) {
-  // ── one mask per texture layer ───────────────────────────────────────────────
-  const masks = useMemo(() =>
+// ── ioRef type (shared with ControlScene) ────────────────────────────────────
+
+export interface GroundIO {
+  save: () => Promise<string[]>
+  load: (layers: string[]) => Promise<void>
+}
+
+// ── component ─────────────────────────────────────────────────────────────────
+
+interface GroundProps {
+  receiveShadow: boolean
+  paintMode: boolean
+  brushRadius: number
+  brushOpacity: number
+  eraseMode: boolean
+  selectedTexture: string
+  ioRef?: React.MutableRefObject<GroundIO | undefined>
+}
+
+export function Ground({
+  receiveShadow, paintMode, brushRadius, brushOpacity, eraseMode, selectedTexture, ioRef,
+}: GroundProps) {
+  const masks = useMemo<Mask[]>(() =>
     ROAD_TEXTURES.map(() => {
       const data = new Uint8Array(MASK_SIZE * MASK_SIZE * 4)
       const tex  = new THREE.DataTexture(data, MASK_SIZE, MASK_SIZE, THREE.RGBAFormat, THREE.UnsignedByteType)
@@ -195,23 +184,19 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
     })
   , [])
 
-  // ── expose save / load to parent via ioRef ───────────────────────────────────
   useEffect(() => {
     if (!ioRef) return
     ioRef.current = {
       save: () => Promise.all(masks.map(m => encodeMask(m.data))),
       load: async (layers) => {
         masks.forEach(m => { m.data.fill(0); m.tex.needsUpdate = true })
-        await Promise.all(
-          layers.slice(0, masks.length).map((url, i) => decodeMask(url, masks[i]))
-        )
+        await Promise.all(layers.slice(0, masks.length).map((url, i) => decodeMask(url, masks[i])))
       },
     }
   }, [ioRef, masks])
 
-  // ── painting state ───────────────────────────────────────────────────────────
   const isPainting = useRef(false)
-  const cursorRef  = useRef()
+  const cursorRef  = useRef<THREE.Mesh>(null)
   const cursorPos  = useRef(new THREE.Vector3())
 
   useEffect(() => {
@@ -220,13 +205,11 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
     return () => window.removeEventListener('pointerup', stop)
   }, [])
 
-  // ── textures ─────────────────────────────────────────────────────────────────
   const [grassColor, grassRough, grassNormal] = useTexture([
     '/textures/moss_ground_03_2k/moss_groud_03_Base_Color_2k.png',
     '/textures/moss_ground_03_2k/moss_groud_03_Roughness_2k.png',
     '/textures/moss_ground_03_2k/moss_groud_03_Normal_gl_2k.png',
   ])
-  // All road textures in one Suspense-friendly call: [color0, rough0, norm0, color1, ...]
   const roadTextures = useTexture(ALL_ROAD_PATHS)
 
   useMemo(() => {
@@ -240,9 +223,7 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
     })
   }, [grassColor, grassRough, grassNormal, roadTextures])
 
-  // ── painting logic ───────────────────────────────────────────────────────────
-  // Erase clears all layers; paint writes only to the selected layer.
-  const doPaint = useCallback((uv) => {
+  const doPaint = useCallback((uv: THREE.Vector2) => {
     if (eraseMode) {
       masks.forEach(({ data, tex }) => applyBrush(uv.x, uv.y, brushRadius, data, tex, true, brushOpacity))
     } else {
@@ -251,22 +232,20 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
     }
   }, [brushRadius, eraseMode, brushOpacity, masks, selectedTexture])
 
-  // ── pointer handlers ─────────────────────────────────────────────────────────
-  const handlePointerDown = useCallback((e) => {
+  const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
     if (!paintMode) return
     e.stopPropagation()
     isPainting.current = true
     if (e.uv) doPaint(e.uv)
   }, [paintMode, doPaint])
 
-  const handlePointerMove = useCallback((e) => {
+  const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
     if (!paintMode) return
     e.stopPropagation()
     cursorPos.current.copy(e.point)
     if (isPainting.current && e.uv) doPaint(e.uv)
   }, [paintMode, doPaint])
 
-  // ── cursor ring ──────────────────────────────────────────────────────────────
   useFrame(() => {
     if (!cursorRef.current) return
     cursorRef.current.visible = paintMode
@@ -278,7 +257,6 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
 
   return (
     <>
-      {/* ── grass base ──────────────────────────────────────────────────────── */}
       <mesh rotation={ROAD_ROT} position={[0, -0.02, 0]} receiveShadow={receiveShadow}>
         <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
         <meshStandardMaterial
@@ -289,16 +267,13 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
         />
       </mesh>
 
-      {/* ── one overlay per texture, each with its own painted mask ─────────── */}
-      {/* Tiny y-offset per layer avoids z-fighting between co-planar overlays. */}
-      {/* Negative renderOrder ensures overlays render before leaves/rain so    */}
-      {/* those transparent objects correctly appear on top via depth test.     */}
       {ROAD_TEXTURES.map((def, i) => (
         <mesh
           key={def.label}
           rotation={ROAD_ROT}
           position={[0, -0.02 + (i + 1) * 0.001, 0]}
           renderOrder={i - N}
+          receiveShadow={receiveShadow}
         >
           <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
           <meshStandardMaterial
@@ -313,7 +288,7 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
         </mesh>
       ))}
 
-      {/* ── transparent hit mesh — sole target for pointer events ────────────── */}
+      {/* Transparent hit mesh — sole target for pointer events during painting */}
       <mesh
         rotation={ROAD_ROT}
         position={[0, 0.01, 0]}
@@ -324,7 +299,6 @@ export function Ground({ receiveShadow, paintMode, brushRadius, eraseMode, brush
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {/* ── brush cursor ring ────────────────────────────────────────────────── */}
       <mesh ref={cursorRef} rotation={ROAD_ROT} visible={false}>
         <ringGeometry args={[0.88, 1, 64]} />
         <meshBasicMaterial

@@ -1,9 +1,12 @@
+'use client'
+
 import { useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 
 // 16:9 TV sizes: diagonal → physical width × height in inches
-export const SCREEN_SIZES = {
+// 1 world unit = 1 inch = 1 D&D grid square
+export const SCREEN_SIZES: Record<string, { w: number; h: number }> = {
   '14"':  { w: 12.2, h:  6.9 },
   '16"':  { w: 13.9, h:  7.8 },
   '23"':  { w: 20.0, h: 11.3 },
@@ -18,10 +21,15 @@ export const SCREEN_SIZES = {
 }
 export const SCREEN_SIZE_LABELS = Object.keys(SCREEN_SIZES)
 
-// 1 world unit = 1 inch = 1 D&D grid square
-// Minor lines every 1 unit, major lines every 5 units (= 5-foot DnD squares)
-export function BattleGrid({ screenW, screenH, visible, showBorder = true }) {
-  const borderPoints = useMemo(() => {
+interface BattleGridProps {
+  screenW: number
+  screenH: number
+  visible: boolean
+  showBorder?: boolean
+}
+
+export function BattleGrid({ screenW, screenH, visible, showBorder = true }: BattleGridProps) {
+  const borderPoints = useMemo((): [number, number, number][] => {
     const hw = screenW / 2, hh = screenH / 2, y = 0.05
     return [
       [-hw, y, -hh],
@@ -35,8 +43,8 @@ export function BattleGrid({ screenW, screenH, visible, showBorder = true }) {
   const { minorGeo, majorGeo } = useMemo(() => {
     const hw = Math.ceil(screenW / 2) + 1
     const hh = Math.ceil(screenH / 2) + 1
-    const minor = []
-    const major = []
+    const minor: number[] = []
+    const major: number[] = []
     const y = 0.03
 
     for (let x = -hw; x <= hw; x++) {

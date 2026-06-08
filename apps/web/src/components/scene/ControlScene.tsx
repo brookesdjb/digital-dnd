@@ -1,20 +1,31 @@
+'use client'
+
 import { Suspense, useRef, useEffect } from 'react'
-import { Canvas } from '@react-three/fiber'
-import { useThree } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
+import { Canvas, useThree } from '@react-three/fiber'
+import { OrbitControls, Stats } from '@react-three/drei'
 import { EffectComposer, N8AO, SMAA } from '@react-three/postprocessing'
 import { useControls, button } from 'leva'
 import * as THREE from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { Rain } from './Rain'
 import { Scatter } from './Scatter'
 import { Ground, ROAD_TEXTURE_LABELS } from './Ground'
+import type { GroundIO } from './Ground'
 import { BattleGrid, SCREEN_SIZES, SCREEN_SIZE_LABELS } from './BattleGrid'
 import { ObjectPainter } from './ObjectPainter'
+import type { ObjectsIO } from './ObjectPainter'
+import type { PlacedObject } from '@dnd-table/types'
 
 const DEFAULT_FOV = 45
 
-function CameraController({ screenH, fov, controlsRef }) {
-  const camera = useThree(s => s.camera)
+interface CameraControllerProps {
+  screenH: number
+  fov: number
+  controlsRef: React.RefObject<OrbitControlsImpl | null>
+}
+
+function CameraController({ screenH, fov, controlsRef }: CameraControllerProps) {
+  const camera = useThree(s => s.camera) as THREE.PerspectiveCamera
   useEffect(() => {
     const h = screenH / (2 * Math.tan((fov * Math.PI / 180) / 2))
     camera.fov = fov
@@ -28,7 +39,7 @@ function CameraController({ screenH, fov, controlsRef }) {
   return null
 }
 
-async function saveScene(groundIO, objectsIO) {
+async function saveScene(groundIO: React.RefObject<GroundIO | undefined>, objectsIO: React.RefObject<ObjectsIO | undefined>) {
   const layers  = await groundIO.current?.save()
   const objects = objectsIO.current?.save() ?? []
   const json = JSON.stringify({ version: 2, textures: ROAD_TEXTURE_LABELS, layers, objects }, null, 2)
@@ -37,27 +48,32 @@ async function saveScene(groundIO, objectsIO) {
   URL.revokeObjectURL(url)
 }
 
-function loadScene(groundIO, objectsIO) {
+function loadScene(groundIO: React.RefObject<GroundIO | undefined>, objectsIO: React.RefObject<ObjectsIO | undefined>) {
   const input = document.createElement('input')
   input.type = 'file'; input.accept = '.json'; input.style.display = 'none'
   document.body.appendChild(input)
   input.onchange = async e => {
     document.body.removeChild(input)
-    const file = e.target.files?.[0]
+    const file = (e.target as HTMLInputElement).files?.[0]
     if (!file) return
     try {
       const data = JSON.parse(await file.text())
-      if (data.layers) await groundIO.current?.load(data.layers)
-      if (data.objects) objectsIO.current?.load(data.objects)
+      if (data.layers)  await groundIO.current?.load(data.layers)
+      if (data.objects) objectsIO.current?.load(data.objects as PlacedObject[])
     } catch (err) { console.error('Failed to load scene:', err) }
   }
   input.click()
 }
 
-export default function App() {
-  const controlsRef = useRef()
-  const groundIO    = useRef()
-  const objectsIO   = useRef()
+interface ControlSceneProps {
+  tableId: string
+}
+
+export default function ControlScene({ tableId: _tableId }: ControlSceneProps) {
+  const controlsRef = useRef<OrbitControlsImpl>(null)
+  const groundIO    = useRef<GroundIO>()
+  const objectsIO   = useRef<ObjectsIO>()
+  const lightRef    = useRef<THREE.DirectionalLight>(null)
 
   const { windSpeed, windStrength } = useControls('Grass', {
     windSpeed:    { value: 1.2, min: 0, max: 5, step: 0.1 },
@@ -101,8 +117,7 @@ export default function App() {
     }, { label: 'Re-center' }),
   })
   const {
-    bgColor,
-    hemSkyColor, hemGroundColor, hemIntensity,
+    bgColor, hemSkyColor, hemGroundColor, hemIntensity,
     sunColor, sunIntensity, sunAzimuth, sunElevation,
     fogEnabled, fogColor, fogDensity,
   } = useControls('Lighting', {
@@ -128,39 +143,51 @@ export default function App() {
 
   const initH = SCREEN_SIZES['55"'].h / (2 * Math.tan((DEFAULT_FOV * Math.PI / 180) / 2))
 
-  // Convert azimuth + elevation to a directional light position
-  const az = sunAzimuth  * Math.PI / 180
+  const az = sunAzimuth   * Math.PI / 180
   const el = sunElevation * Math.PI / 180
   const sunDist = fieldSize
-  const sunPos = [
+  const sunPos: [number, number, number] = [
     Math.cos(el) * Math.sin(az) * sunDist,
     Math.sin(el) * sunDist,
     Math.cos(el) * Math.cos(az) * sunDist,
   ]
   const shadowHalf = fieldSize / 2
 
+  // Baked shadow map — only re-renders when sun direction changes or in paint mode.
+  useEffect(() => {
+    const light = lightRef.current
+    if (!light) return
+    if (objectPaintMode) {
+      light.shadow.autoUpdate = true
+    } else {
+      light.shadow.autoUpdate = false
+      light.shadow.needsUpdate = true
+    }
+  }, [objectPaintMode])
+
+  useEffect(() => {
+    const light = lightRef.current
+    if (!light || !useSoftShadows) return
+    light.shadow.needsUpdate = true
+  }, [sunAzimuth, sunElevation, fieldSize, useSoftShadows])
+
   return (
-    <div style={{ width: '100vw', height: '100vh', background: bgColor, cursor: (paintMode || objectPaintMode) ? 'none' : 'auto' }}>
+    <div style={{ width: '100%', height: '100%', background: bgColor, cursor: (paintMode || objectPaintMode) ? 'none' : 'auto' }}>
       <Canvas
         shadows
         camera={{ position: [0, initH, 0.001], fov: DEFAULT_FOV, near: 0.1, far: 300 }}
         gl={{ antialias: true, toneMapping: THREE.NoToneMapping }}
       >
+        <Stats />
         <CameraController screenH={screenDims.h} fov={fov} controlsRef={controlsRef} />
 
-        {/* Scene background and optional fog */}
         <color attach="background" args={[bgColor]} />
         {fogEnabled && <fogExp2 attach="fog" args={[fogColor, fogDensity]} />}
 
-        {/* Hemisphere ambient — sky/ground color split */}
-        <hemisphereLight
-          color={hemSkyColor}
-          groundColor={hemGroundColor}
-          intensity={hemIntensity}
-        />
+        <hemisphereLight color={hemSkyColor} groundColor={hemGroundColor} intensity={hemIntensity} />
 
-        {/* Sun — always provides illumination, casts shadows in soft shadow mode */}
         <directionalLight
+          ref={lightRef}
           castShadow={useSoftShadows}
           position={sunPos}
           color={sunColor}
@@ -211,13 +238,7 @@ export default function App() {
 
         {useSSAO && (
           <EffectComposer>
-            <N8AO
-              color="black"
-              aoRadius={aoRadius}
-              intensity={aoIntensity}
-              aoSamples={16}
-              quality="medium"
-            />
+            <N8AO color="black" aoRadius={aoRadius} intensity={aoIntensity} aoSamples={16} quality="medium" />
             <SMAA />
           </EffectComposer>
         )}

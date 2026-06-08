@@ -1,16 +1,15 @@
+'use client'
+
 import { useRef, useMemo, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
-const BASE_FIELD         = 32
-const BASE_STREAK_COUNT  = 6000
-const BASE_RIPPLE_COUNT  = 500
-const FALL_SPEED = 9.0
-// Slight wind lean so streaks have a visible direction from above
-const WIND_X = 1.8
-const WIND_Z = 0.4
-
-// ─── Ripple shaders ───────────────────────────────────────────────────────────
+const BASE_FIELD        = 32
+const BASE_STREAK_COUNT = 6000
+const BASE_RIPPLE_COUNT = 500
+const FALL_SPEED        = 9.0
+const WIND_X            = 1.8
+const WIND_Z            = 0.4
 
 const RIPPLE_VERT = /* glsl */`
   attribute float aProgress;
@@ -32,11 +31,9 @@ const RIPPLE_FRAG = /* glsl */`
     vec2 uv = vUv - 0.5;
     float r = length(uv);
 
-    // Outer ring
     float r1 = vProgress * 0.44;
     float ring1 = 1.0 - smoothstep(0.0, 0.022, abs(r - r1) - 0.009);
 
-    // Inner ring lags 0.2 behind outer
     float innerP = max(0.0, vProgress - 0.2);
     float r2 = innerP * 0.30;
     float ring2 = (1.0 - smoothstep(0.0, 0.018, abs(r - r2) - 0.006))
@@ -50,10 +47,13 @@ const RIPPLE_FRAG = /* glsl */`
   }
 `
 
-// ─── Rain streak (falling drop) ───────────────────────────────────────────────
+interface RainStreaksProps {
+  intensity: number
+  fieldSize: number
+}
 
-function RainStreaks({ intensity, fieldSize }) {
-  const ref = useRef()
+function RainStreaks({ intensity, fieldSize }: RainStreaksProps) {
+  const ref = useRef<THREE.InstancedMesh>(null)
   const dummy = useMemo(() => new THREE.Object3D(), [])
   const fieldRef = useRef(fieldSize)
   useEffect(() => { fieldRef.current = fieldSize }, [fieldSize])
@@ -66,10 +66,8 @@ function RainStreaks({ intensity, fieldSize }) {
     z: (Math.random() - 0.5) * fieldSize,
   })), [fieldSize, streakCount])
 
-  // Geometry: thin cylinder leaned in wind direction
   const geo = useMemo(() => {
     const g = new THREE.CylinderGeometry(0.008, 0.012, 0.28, 4)
-    // Tilt ~18° in wind direction so from above the streak shows as an angled mark
     g.rotateZ(0.32)
     return g
   }, [])
@@ -83,6 +81,7 @@ function RainStreaks({ intensity, fieldSize }) {
   }), [])
 
   useFrame((_, dt) => {
+    if (intensity === 0) return
     const mesh = ref.current
     if (!mesh) return
     mat.opacity = intensity * 0.38
@@ -104,22 +103,23 @@ function RainStreaks({ intensity, fieldSize }) {
   })
 
   return (
-    <instancedMesh ref={ref} args={[geo, mat, streakCount]} frustumCulled={false} />
+    <instancedMesh ref={ref} args={[geo, mat, streakCount]} frustumCulled={false} visible={intensity > 0} />
   )
 }
 
-// ─── Ground ripples ───────────────────────────────────────────────────────────
+interface GroundRipplesProps {
+  intensity: number
+  fieldSize: number
+  phaseOffset?: number
+}
 
-// Two instances of GroundRipples are rendered with phaseOffset 0 and 0.5 so
-// one group is always in the first half of the animation cycle and the other
-// in the second half — prevents all ripples syncing up visually.
-function GroundRipples({ intensity, fieldSize, phaseOffset = 0 }) {
-  const ref = useRef()
+// Two GroundRipples instances (phaseOffset 0 and 0.5) prevent all ripples syncing up visually.
+function GroundRipples({ intensity, fieldSize, phaseOffset = 0 }: GroundRipplesProps) {
+  const ref = useRef<THREE.InstancedMesh>(null)
   const dummy = useMemo(() => new THREE.Object3D(), [])
   const fieldRef = useRef(fieldSize)
   useEffect(() => { fieldRef.current = fieldSize }, [fieldSize])
 
-  // Half count per group — two instances keep the total the same
   const rippleCount = useMemo(() => Math.round(BASE_RIPPLE_COUNT * fieldSize / BASE_FIELD / 2), [fieldSize])
 
   const progress = useMemo(() => new Float32Array(rippleCount), [rippleCount])
@@ -137,14 +137,8 @@ function GroundRipples({ intensity, fieldSize, phaseOffset = 0 }) {
     side: THREE.DoubleSide,
   }), [])
 
-  useEffect(() => {
-    mat.uniforms.uIntensity.value = intensity
-  }, [intensity, mat])
+  useEffect(() => { mat.uniforms.uIntensity.value = intensity }, [intensity, mat])
 
-  // Stagger initial phases within this group's half of the 0-1 cycle.
-  // Group A (phaseOffset=0.0): phases 0.0–0.5
-  // Group B (phaseOffset=0.5): phases 0.5–1.0
-  // Deps include rippleCount/progress/ripples so this re-runs when fieldSize changes.
   useEffect(() => {
     const mesh = ref.current
     if (!mesh) return
@@ -160,11 +154,12 @@ function GroundRipples({ intensity, fieldSize, phaseOffset = 0 }) {
   }, [rippleCount, progress, ripples, dummy, phaseOffset])
 
   useFrame((_, dt) => {
+    if (intensity === 0) return
     const mesh = ref.current
     if (!mesh) return
     mat.uniforms.uIntensity.value = intensity
 
-    const attr = mesh.geometry.attributes.aProgress
+    const attr = mesh.geometry.attributes.aProgress as THREE.BufferAttribute
     let matrixDirty = false
 
     for (let i = 0; i < rippleCount; i++) {
@@ -188,7 +183,7 @@ function GroundRipples({ intensity, fieldSize, phaseOffset = 0 }) {
   })
 
   return (
-    <instancedMesh ref={ref} args={[undefined, mat, rippleCount]} frustumCulled={false}>
+    <instancedMesh ref={ref} args={[undefined, mat, rippleCount]} frustumCulled={false} visible={intensity > 0}>
       <planeGeometry args={[1, 1]}>
         <instancedBufferAttribute
           attach="attributes-aProgress"
@@ -199,9 +194,12 @@ function GroundRipples({ intensity, fieldSize, phaseOffset = 0 }) {
   )
 }
 
-// ─── Public component ─────────────────────────────────────────────────────────
+interface RainProps {
+  intensity?: number
+  fieldSize?: number
+}
 
-export function Rain({ intensity = 1.0, fieldSize = BASE_FIELD }) {
+export function Rain({ intensity = 1.0, fieldSize = BASE_FIELD }: RainProps) {
   return (
     <>
       <RainStreaks intensity={intensity} fieldSize={fieldSize} />

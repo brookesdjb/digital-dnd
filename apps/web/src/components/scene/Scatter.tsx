@@ -1,0 +1,352 @@
+'use client'
+
+import { useMemo, useEffect, useRef } from 'react'
+import { useGLTF } from '@react-three/drei'
+import { useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
+import type { GLTF } from 'three-stdlib'
+
+const BASE = '/models/kaykit/'
+
+const MODELS = [
+  'BirchTree_1','BirchTree_2','BirchTree_3',
+  'MapleTree_1','MapleTree_2',
+  'DeadTree_1','DeadTree_2',
+  'Bush','Bush_Large','Bush_Flowers',
+  'Grass_Large','Grass_Small',
+  'Flower_1_Clump','Flower_2_Clump',
+]
+MODELS.forEach(m => useGLTF.preload(`${BASE}${m}.gltf`))
+
+// ── shared wind uniforms ──────────────────────────────────────────────────────
+// Exported so ObjectPainter can apply the same wind to manually placed grass.
+
+export const grassWindUniforms = {
+  uTime:         { value: 0 },
+  uWindSpeed:    { value: 1.4 },
+  uWindStrength: { value: 1.0 },
+}
+
+export function applyGrassWind(material: THREE.Material) {
+  const mat = material as THREE.Material & { _windApplied?: boolean; onBeforeCompile: (shader: THREE.WebGLProgramParametersWithUniforms) => void; needsUpdate: boolean }
+  if (mat._windApplied) return
+  mat._windApplied = true
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime         = grassWindUniforms.uTime
+    shader.uniforms.uWindSpeed    = grassWindUniforms.uWindSpeed
+    shader.uniforms.uWindStrength = grassWindUniforms.uWindStrength
+    shader.vertexShader =
+      `uniform float uTime;\nuniform float uWindSpeed;\nuniform float uWindStrength;\n`
+      + shader.vertexShader
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      /* glsl */`
+      #include <begin_vertex>
+      float windHeight = 1.0 - uv.y;
+      #ifdef USE_INSTANCING
+        vec3 wPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+      #else
+        vec3 wPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      #endif
+      float wave = sin(uTime * uWindSpeed       + wPos.x * 1.9 + wPos.z * 1.3) * 0.20;
+      float gust = sin(uTime * uWindSpeed * 0.2 + wPos.x * 0.5               ) * 0.12;
+      transformed.x += (wave + gust) * windHeight * uWindStrength;
+      transformed.z += wave * 0.4   * windHeight * uWindStrength;
+      `
+    )
+  }
+  mat.needsUpdate = true
+}
+
+export function applyWindToGrassScene(scene: THREE.Object3D) {
+  scene.traverse(child => {
+    if (!(child as THREE.Mesh).isMesh) return
+    const mesh = child as THREE.Mesh
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    mats.forEach(mat => { if (mat.name === 'Grass') applyGrassWind(mat) })
+  })
+}
+
+// ── InstancedModel ────────────────────────────────────────────────────────────
+
+// Fixed buffer size — instancedMesh args must never change at runtime.
+// mesh.count controls how many instances are actually rendered each frame.
+const MAX_INSTANCES = 1000
+
+interface InstanceData {
+  position?: THREE.Vector3
+  x?: number
+  y?: number
+  z?: number
+  rotation?: number
+  ry?: number
+  scale?: number | number[] | { x: number; y: number; z: number }
+  s?: number | number[] | { x: number; y: number; z: number }
+}
+
+interface MeshData {
+  geometry: THREE.BufferGeometry
+  material: THREE.Material | THREE.Material[]
+  localMatrix: THREE.Matrix4
+}
+
+interface InstancedModelProps {
+  scene: THREE.Object3D
+  instances: InstanceData[]
+  castShadow?: boolean
+  receiveShadow?: boolean
+}
+
+export function InstancedModel({ scene, instances, castShadow, receiveShadow }: InstancedModelProps) {
+  const meshes = useMemo<MeshData[]>(() => {
+    const s = scene.clone(true)
+    s.position.set(0, 0, 0)
+    s.rotation.set(0, 0, 0)
+    s.scale.set(1, 1, 1)
+    s.updateMatrixWorld(true)
+
+    const list: MeshData[] = []
+    s.traverse(child => {
+      const mesh = child as THREE.Mesh
+      if (mesh.isMesh) {
+        list.push({
+          geometry: mesh.geometry,
+          material: mesh.material,
+          localMatrix: mesh.matrixWorld.clone(),
+        })
+      }
+    })
+    return list
+  }, [scene])
+
+  const meshRefs = useRef<(THREE.InstancedMesh | null)[]>([])
+
+  useEffect(() => {
+    const dummy = new THREE.Object3D()
+    const tempMatrix = new THREE.Matrix4()
+
+    meshes.forEach((meshData, meshIdx) => {
+      const instMesh = meshRefs.current[meshIdx]
+      if (!instMesh) return
+
+      instances.forEach((inst, instIdx) => {
+        if (inst.position) {
+          dummy.position.copy(inst.position)
+        } else {
+          dummy.position.set(inst.x ?? 0, inst.y ?? 0, inst.z ?? 0)
+        }
+
+        dummy.rotation.set(0, inst.ry ?? inst.rotation ?? 0, 0)
+
+        const s = inst.s ?? inst.scale ?? 1
+        if (typeof s === 'number') {
+          dummy.scale.setScalar(s)
+        } else if (Array.isArray(s)) {
+          dummy.scale.set(s[0], s[1], s[2])
+        } else {
+          dummy.scale.set(s.x, s.y, s.z)
+        }
+        dummy.updateMatrix()
+
+        tempMatrix.multiplyMatrices(dummy.matrix, meshData.localMatrix)
+        instMesh.setMatrixAt(instIdx, tempMatrix)
+      })
+
+      instMesh.instanceMatrix.needsUpdate = true
+      instMesh.count = instances.length
+    })
+  }, [meshes, instances])
+
+  return (
+    <>
+      {meshes.map((meshData, idx) => (
+        <instancedMesh
+          key={idx}
+          ref={el => { meshRefs.current[idx] = el }}
+          args={[meshData.geometry, meshData.material as THREE.Material, MAX_INSTANCES]}
+          castShadow={castShadow}
+          receiveShadow={receiveShadow}
+        />
+      ))}
+    </>
+  )
+}
+
+// ── blob shadow resources ─────────────────────────────────────────────────────
+
+function makeBlobTexture() {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 128
+  const ctx = canvas.getContext('2d')!
+  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 62)
+  grad.addColorStop(0,   'rgba(0,0,0,0.55)')
+  grad.addColorStop(0.5, 'rgba(0,0,0,0.25)')
+  grad.addColorStop(1,   'rgba(0,0,0,0)')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, 128, 128)
+  return new THREE.CanvasTexture(canvas)
+}
+
+const SHADOW_SCALE: Record<string, number> = { tree: 2.4, dead: 1.6, bush: 1.1, cover: 0.65 }
+
+// ── scatter helper ────────────────────────────────────────────────────────────
+
+interface ScatterPoint {
+  x: number
+  z: number
+  ry: number
+}
+
+function scatter(count: number, minDist: number, existing: ScatterPoint[] = [], field = 27): ScatterPoint[] {
+  const pts: ScatterPoint[] = []
+  let tries = 0
+  const all = [...existing, ...pts]
+  while (pts.length < count && tries++ < count * 40) {
+    const x = (Math.random() - 0.5) * field
+    const z = (Math.random() - 0.5) * field
+    const ok = all.every(p => Math.hypot(p.x - x, p.z - z) > minDist)
+    if (ok) { const pt = { x, z, ry: Math.random() * Math.PI * 2 }; pts.push(pt); all.push(pt) }
+  }
+  return pts
+}
+
+// ── Scatter component ─────────────────────────────────────────────────────────
+
+interface ScatterProps {
+  windSpeed?: number
+  windStrength?: number
+  showBlobs?: boolean
+  usePCSS?: boolean
+  blobSize?: number
+  blobOpacity?: number
+  fieldSize?: number
+}
+
+export function Scatter({
+  windSpeed    = 1.4,
+  windStrength = 1.0,
+  showBlobs    = true,
+  usePCSS      = false,
+  blobSize     = 1.0,
+  blobOpacity  = 1.0,
+  fieldSize    = 27,
+}: ScatterProps) {
+  const { scene: b1 } = useGLTF(`${BASE}BirchTree_1.gltf`) as GLTF
+  const { scene: b2 } = useGLTF(`${BASE}BirchTree_2.gltf`) as GLTF
+  const { scene: b3 } = useGLTF(`${BASE}BirchTree_3.gltf`) as GLTF
+  const { scene: m1 } = useGLTF(`${BASE}MapleTree_1.gltf`) as GLTF
+  const { scene: m2 } = useGLTF(`${BASE}MapleTree_2.gltf`) as GLTF
+  const { scene: d1 } = useGLTF(`${BASE}DeadTree_1.gltf`) as GLTF
+  const { scene: d2 } = useGLTF(`${BASE}DeadTree_2.gltf`) as GLTF
+  const { scene: bs  } = useGLTF(`${BASE}Bush.gltf`) as GLTF
+  const { scene: bsl } = useGLTF(`${BASE}Bush_Large.gltf`) as GLTF
+  const { scene: bsf } = useGLTF(`${BASE}Bush_Flowers.gltf`) as GLTF
+  const { scene: gl  } = useGLTF(`${BASE}Grass_Large.gltf`) as GLTF
+  const { scene: gs  } = useGLTF(`${BASE}Grass_Small.gltf`) as GLTF
+  const { scene: fl  } = useGLTF(`${BASE}Flower_1_Clump.gltf`) as GLTF
+  const { scene: f2  } = useGLTF(`${BASE}Flower_2_Clump.gltf`) as GLTF
+
+  useMemo(() => {
+    applyWindToGrassScene(gl)
+    applyWindToGrassScene(gs)
+  }, [gl, gs])
+
+  const shadowTex = useMemo(() => makeBlobTexture(), [])
+  const shadowGeo = useMemo(() => new THREE.CircleGeometry(1, 16), [])
+  const shadowMat = useMemo(() => new THREE.MeshBasicMaterial({
+    map: shadowTex, transparent: true, depthWrite: false, color: 0x000000,
+  }), [shadowTex])
+
+  const treeVariants  = [b1, b2, b3, m1, m2]
+  const deadVariants  = [d1, d2]
+  const bushVariants  = [bs, bsl, bsf]
+  const coverVariants = [gl, gs, fl, f2]
+
+  type InstanceType = ScatterPoint & { type: string; src: THREE.Object3D; s: number }
+
+  const instances = useMemo<InstanceType[]>(() => {
+    const scale  = Math.max(1, fieldSize / 27)
+    const nTree  = Math.round(16 * scale)
+    const nDead  = Math.round(6  * scale)
+    const nBush  = Math.round(30 * scale)
+    const nCover = Math.round(50 * scale)
+
+    const treePts  = scatter(nTree,  2.8, [],                        fieldSize)
+    const deadPts  = scatter(nDead,  2.5, treePts,                   fieldSize)
+    const bushPts  = scatter(nBush,  1.2, [...treePts, ...deadPts],  fieldSize)
+    const coverPts = scatter(nCover, 0.6, [],                        fieldSize)
+
+    return [
+      ...treePts.map((p, i)  => ({ ...p, type: 'tree',  src: treeVariants[i  % treeVariants.length],  s: 0.38 + Math.random() * 0.18 })),
+      ...deadPts.map((p, i)  => ({ ...p, type: 'dead',  src: deadVariants[i  % deadVariants.length],  s: 0.32 + Math.random() * 0.15 })),
+      ...bushPts.map((p, i)  => ({ ...p, type: 'bush',  src: bushVariants[i  % bushVariants.length],  s: 0.55 + Math.random() * 0.25 })),
+      ...coverPts.map((p, i) => ({ ...p, type: 'cover', src: coverVariants[i % coverVariants.length], s: 0.9  + Math.random() * 0.5  })),
+    ]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldSize])
+
+  const allModels = useMemo(() => [
+    { key: 'b1', scene: b1 }, { key: 'b2', scene: b2 }, { key: 'b3', scene: b3 },
+    { key: 'm1', scene: m1 }, { key: 'm2', scene: m2 },
+    { key: 'd1', scene: d1 }, { key: 'd2', scene: d2 },
+    { key: 'bs', scene: bs }, { key: 'bsl', scene: bsl }, { key: 'bsf', scene: bsf },
+    { key: 'gl', scene: gl }, { key: 'gs', scene: gs },
+    { key: 'fl', scene: fl }, { key: 'f2', scene: f2 },
+  ], [b1, b2, b3, m1, m2, d1, d2, bs, bsl, bsf, gl, gs, fl, f2])
+
+  const groupedInstances = useMemo(() => {
+    const groups = new Map<THREE.Object3D, InstanceData[]>()
+    allModels.forEach(m => groups.set(m.scene, []))
+    instances.forEach(inst => {
+      const list = groups.get(inst.src)
+      if (list) list.push({ x: inst.x, z: inst.z, ry: inst.ry, s: inst.s })
+    })
+    return allModels
+      .map(m => ({ key: m.key, scene: m.scene, list: groups.get(m.scene) ?? [] }))
+      .filter(g => g.list.length > 0)
+  }, [instances, allModels])
+
+  const shadowRef = useRef<THREE.InstancedMesh>(null)
+
+  useEffect(() => {
+    const mesh = shadowRef.current
+    if (!mesh) return
+    const dummy = new THREE.Object3D()
+    instances.forEach((inst, i) => {
+      dummy.position.set(inst.x, 0.02, inst.z)
+      dummy.rotation.set(-Math.PI / 2, 0, 0)
+      const scale = inst.s * SHADOW_SCALE[inst.type] * blobSize
+      dummy.scale.set(scale, scale, 1)
+      dummy.updateMatrix()
+      mesh.setMatrixAt(i, dummy.matrix)
+    })
+    mesh.instanceMatrix.needsUpdate = true
+  }, [instances, blobSize])
+
+  useEffect(() => { shadowMat.opacity = blobOpacity }, [shadowMat, blobOpacity])
+
+  useFrame(({ clock }) => {
+    grassWindUniforms.uTime.value         = clock.getElapsedTime()
+    grassWindUniforms.uWindSpeed.value    = windSpeed
+    grassWindUniforms.uWindStrength.value = windStrength
+  })
+
+  return (
+    <>
+      <instancedMesh
+        ref={shadowRef}
+        args={[shadowGeo, shadowMat, instances.length]}
+        visible={showBlobs}
+      />
+      {groupedInstances.map(group => (
+        <InstancedModel
+          key={group.key}
+          scene={group.scene}
+          instances={group.list}
+          castShadow={usePCSS}
+          receiveShadow={usePCSS}
+        />
+      ))}
+    </>
+  )
+}
