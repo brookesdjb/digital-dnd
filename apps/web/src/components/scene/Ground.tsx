@@ -169,10 +169,11 @@ interface GroundProps {
   eraseMode: boolean
   selectedTexture: string
   ioRef?: React.MutableRefObject<GroundIO | undefined>
+  onChange?: () => void
 }
 
 export function Ground({
-  receiveShadow, paintMode, brushRadius, brushOpacity, eraseMode, selectedTexture, ioRef,
+  receiveShadow, paintMode, brushRadius, brushOpacity, eraseMode, selectedTexture, ioRef, onChange,
 }: GroundProps) {
   const masks = useMemo<Mask[]>(() =>
     ROAD_TEXTURES.map(() => {
@@ -200,10 +201,13 @@ export function Ground({
   const cursorPos  = useRef(new THREE.Vector3())
 
   useEffect(() => {
-    const stop = () => { isPainting.current = false }
+    const stop = () => {
+      if (isPainting.current) onChange?.()
+      isPainting.current = false
+    }
     window.addEventListener('pointerup', stop)
     return () => window.removeEventListener('pointerup', stop)
-  }, [])
+  }, [onChange])
 
   const [grassColor, grassRough, grassNormal] = useTexture([
     '/textures/moss_ground_03_2k/moss_groud_03_Base_Color_2k.png',

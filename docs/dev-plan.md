@@ -264,6 +264,16 @@ On display connect / reconnect:
 
 ---
 
+## Multi-Scene and Multi-Session Model
+
+Each user can have multiple **sessions** (table_config rows) — e.g. "Basement Campaign", "Kitchen One-Shot". Within each session there are multiple **scenes** (maps/layouts) that can be saved, renamed, reordered, and activated at will. The active scene is what the display client shows.
+
+- **Session list**: shown on `/setup` — all table_configs the user has created, each linking to its control view. For now scoped by localStorage (no auth); with auth (M6) scoped by user.
+- **Scene list**: sidebar in the control view listing all scenes for the active session. DM can add, rename, delete, reorder, and switch scenes. Switching activates the scene for the display in real-time.
+- One scene is always "active" per session (`table_config.active_scene_id`). Display always shows the active scene.
+
+---
+
 ## Milestones
 
 ### Milestone 0 — Already done
@@ -271,19 +281,19 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 
 ---
 
-### Milestone 1 — Monorepo + Next.js Migration
+### Milestone 1 — Monorepo + Next.js Migration ✅
 
 **Goal:** same visual output as today, in the new structure, with no sync yet.
 
-- [ ] Set up monorepo (npm/pnpm workspaces): `apps/web`, `packages/types`
-- [ ] Scaffold Next.js app in `apps/web` with TypeScript
-- [ ] Migrate R3F components to `apps/web/src/components/scene/` as `.tsx`
-- [ ] `SceneCanvas.tsx`: wrap `<Canvas>` with `dynamic(..., { ssr: false })`
-- [ ] `/control/[tableId]` route: renders full scene + leva panels (current App.jsx behaviour)
-- [ ] `/display/[tableId]` route: renders scene only, no controls, no pointer events
-- [ ] `/setup` route: placeholder page (table name input, generates tableId)
-- [ ] `packages/types`: define `Scene`, `PlacedObject`, `TerrainState`, `FogMask`, all Realtime message types
-- [ ] Delete Vite config; update scripts in root `package.json`
+- [x] Set up monorepo (npm/pnpm workspaces): `apps/web`, `packages/types`
+- [x] Scaffold Next.js app in `apps/web` with TypeScript
+- [x] Migrate R3F components to `apps/web/src/components/scene/` as `.tsx`
+- [x] `SceneCanvas.tsx`: wrap `<Canvas>` with `dynamic(..., { ssr: false })`
+- [x] `/control/[tableId]` route: renders full scene + leva panels (current App.jsx behaviour)
+- [x] `/display/[tableId]` route: renders scene only, no controls, no pointer events
+- [x] `/setup` route: placeholder page (table name input, generates tableId)
+- [x] `packages/types`: define `Scene`, `PlacedObject`, `TerrainState`, `FogMask`, all Realtime message types
+- [x] Delete Vite config; update scripts in root `package.json`
 
 ---
 
@@ -291,8 +301,9 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 
 **Goal:** scene state lives in Supabase, survives browser refresh.
 
-- [ ] Supabase project setup: `supabase init`, migrations for `table_config`, `asset`, `scene`
-- [ ] `/setup`: create table in DB, display QR code for `/display/[tableId]` URL
+- [x] Supabase project setup: `supabase init`, migrations for `table_config`, `asset`, `scene`
+- [x] `/setup`: create table in DB, display QR code for `/display/[tableId]` URL
+- [ ] `/setup`: list existing sessions (from localStorage) so DM can return to a previous table
 - [ ] Control client saves scene state to DB on change (debounced)
 - [ ] Control client loads scene state from DB on mount
 - [ ] Replace local JSON save/load (current `saveScene`/`loadScene` in `App.jsx`) with DB read/write

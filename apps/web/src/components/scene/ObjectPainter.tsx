@@ -180,6 +180,7 @@ interface ObjectPainterProps {
   showBlobs?: boolean
   blobSize?: number
   blobOpacity?: number
+  onChange?: () => void
 }
 
 export function ObjectPainter({
@@ -189,6 +190,7 @@ export function ObjectPainter({
   showBlobs   = true,
   blobSize    = 1.0,
   blobOpacity = 1.0,
+  onChange,
 }: ObjectPainterProps) {
   const placedRef = useRef<PlacedObject[]>([])
   const [placed, setPlaced] = useState<PlacedObject[]>([])
@@ -199,12 +201,14 @@ export function ObjectPainter({
     const next = placedRef.current.slice(0, -1)
     placedRef.current = next
     setPlaced(next)
-  }, [])
+    onChange?.()
+  }, [onChange])
 
   const clearAll = useCallback(() => {
     placedRef.current = []
     setPlaced([])
-  }, [])
+    onChange?.()
+  }, [onChange])
 
   useEffect(() => {
     if (!ioRef) return
@@ -274,7 +278,8 @@ export function ObjectPainter({
     const next = [...placedRef.current, ...items]
     placedRef.current = next
     setPlaced(next)
-  }, [])
+    onChange?.()
+  }, [onChange])
 
   const cursorRef = useRef<THREE.Mesh>(null)
   const cursorPos = useRef(new THREE.Vector3())

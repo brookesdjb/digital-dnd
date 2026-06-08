@@ -14,7 +14,7 @@ import type { GroundIO } from './Ground'
 import { BattleGrid, SCREEN_SIZES, SCREEN_SIZE_LABELS } from './BattleGrid'
 import { ObjectPainter } from './ObjectPainter'
 import type { ObjectsIO } from './ObjectPainter'
-import type { PlacedObject } from '@dnd-table/types'
+import { useSceneDB } from '@/lib/sync/useSceneDB'
 
 const DEFAULT_FOV = 45
 
@@ -39,41 +39,18 @@ function CameraController({ screenH, fov, controlsRef }: CameraControllerProps) 
   return null
 }
 
-async function saveScene(groundIO: React.RefObject<GroundIO | undefined>, objectsIO: React.RefObject<ObjectsIO | undefined>) {
-  const layers  = await groundIO.current?.save()
-  const objects = objectsIO.current?.save() ?? []
-  const json = JSON.stringify({ version: 2, textures: ROAD_TEXTURE_LABELS, layers, objects }, null, 2)
-  const url  = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
-  Object.assign(document.createElement('a'), { href: url, download: 'terrain-map.json' }).click()
-  URL.revokeObjectURL(url)
-}
-
-function loadScene(groundIO: React.RefObject<GroundIO | undefined>, objectsIO: React.RefObject<ObjectsIO | undefined>) {
-  const input = document.createElement('input')
-  input.type = 'file'; input.accept = '.json'; input.style.display = 'none'
-  document.body.appendChild(input)
-  input.onchange = async e => {
-    document.body.removeChild(input)
-    const file = (e.target as HTMLInputElement).files?.[0]
-    if (!file) return
-    try {
-      const data = JSON.parse(await file.text())
-      if (data.layers)  await groundIO.current?.load(data.layers)
-      if (data.objects) objectsIO.current?.load(data.objects as PlacedObject[])
-    } catch (err) { console.error('Failed to load scene:', err) }
-  }
-  input.click()
-}
 
 interface ControlSceneProps {
   tableId: string
 }
 
-export default function ControlScene({ tableId: _tableId }: ControlSceneProps) {
+export default function ControlScene({ tableId }: ControlSceneProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null)
-  const groundIO    = useRef<GroundIO>()
-  const objectsIO   = useRef<ObjectsIO>()
+  const groundIO    = useRef<GroundIO>(undefined)
+  const objectsIO   = useRef<ObjectsIO>(undefined)
   const lightRef    = useRef<THREE.DirectionalLight>(null)
+
+  const { save, scheduleSave } = useSceneDB(tableId, groundIO, objectsIO)
 
   const { windSpeed, windStrength } = useControls('Grass', {
     windSpeed:    { value: 1.2, min: 0, max: 5, step: 0.1 },
@@ -86,8 +63,7 @@ export default function ControlScene({ tableId: _tableId }: ControlSceneProps) {
     objectPaintMode: { value: false, label: 'Paint Objects' },
   })
   useControls('Scene', {
-    'Save Scene': button(() => saveScene(groundIO, objectsIO)),
-    'Load Scene': button(() => loadScene(groundIO, objectsIO)),
+    'Save Now': button(() => save()),
   })
   const { paintMode, brushRadius, brushOpacity, eraseMode, selectedTexture } = useControls('Road Painting', {
     paintMode:       { value: false,                  label: 'Paint Roads'  },
@@ -114,7 +90,7 @@ export default function ControlScene({ tableId: _tableId }: ControlSceneProps) {
         controlsRef.current.target.set(0, 0, 0)
         controlsRef.current.update()
       }
-    }, { label: 'Re-center' }),
+    }),
   })
   const {
     bgColor, hemSkyColor, hemGroundColor, hemIntensity,
@@ -213,6 +189,7 @@ export default function ControlScene({ tableId: _tableId }: ControlSceneProps) {
             eraseMode={eraseMode}
             selectedTexture={selectedTexture}
             ioRef={groundIO}
+            onChange={scheduleSave}
           />
           <Scatter
             windSpeed={windSpeed}
@@ -231,6 +208,7 @@ export default function ControlScene({ tableId: _tableId }: ControlSceneProps) {
             showBlobs={showBlobs}
             blobSize={blobSize}
             blobOpacity={blobOpacity}
+            onChange={scheduleSave}
           />
         </Suspense>
 
