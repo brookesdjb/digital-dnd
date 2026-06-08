@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useRef, useEffect } from 'react'
+import { Suspense, useRef, useEffect, useCallback } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, Stats } from '@react-three/drei'
 import { EffectComposer, N8AO, SMAA } from '@react-three/postprocessing'
@@ -15,6 +15,7 @@ import { BattleGrid, SCREEN_SIZES, SCREEN_SIZE_LABELS } from './BattleGrid'
 import { ObjectPainter } from './ObjectPainter'
 import type { ObjectsIO } from './ObjectPainter'
 import { useSceneDB } from '@/lib/sync/useSceneDB'
+import { useScenePublish } from '@/lib/sync/useScenePublish'
 
 const DEFAULT_FOV = 45
 
@@ -50,7 +51,11 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const objectsIO   = useRef<ObjectsIO>(undefined)
   const lightRef    = useRef<THREE.DirectionalLight>(null)
 
-  const { save, scheduleSave } = useSceneDB(tableId, groundIO, objectsIO)
+  const { save, scheduleSave, sceneIdRef } = useSceneDB(tableId, groundIO, objectsIO)
+  const { schedulePublishTerrain, schedulePublishObjects } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO)
+
+  const onTerrainChange = useCallback(() => { schedulePublishTerrain(); scheduleSave() }, [schedulePublishTerrain, scheduleSave])
+  const onObjectsChange = useCallback(() => { schedulePublishObjects(); scheduleSave() }, [schedulePublishObjects, scheduleSave])
 
   const { windSpeed, windStrength } = useControls('Grass', {
     windSpeed:    { value: 1.2, min: 0, max: 5, step: 0.1 },
@@ -189,7 +194,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
             eraseMode={eraseMode}
             selectedTexture={selectedTexture}
             ioRef={groundIO}
-            onChange={scheduleSave}
+            onChange={onTerrainChange}
           />
           <Scatter
             windSpeed={windSpeed}
@@ -208,7 +213,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
             showBlobs={showBlobs}
             blobSize={blobSize}
             blobOpacity={blobOpacity}
-            onChange={scheduleSave}
+            onChange={onObjectsChange}
           />
         </Suspense>
 

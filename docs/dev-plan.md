@@ -310,18 +310,18 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 
 ---
 
-### Milestone 2 — Supabase + Persistence
+### Milestone 2 — Supabase + Persistence ✅
 
 **Goal:** scene state lives in Supabase, survives browser refresh.
 
 - [x] Supabase project setup: `supabase init`, migrations for `table_config`, `asset`, `scene`
 - [x] `/setup`: create table in DB, display QR code for `/display/[tableId]` URL
-- [ ] `/setup`: list existing sessions (from localStorage) so DM can return to a previous table
 - [x] Control client saves scene state to DB on change (debounced 500ms via `useSceneDB`)
 - [x] Control client loads scene state from DB on mount (creates default scene if none exists)
 - [x] Replace local JSON save/load with DB read/write
 - [x] `docker-compose.yml`: Supabase stack (postgres, PostgREST, Realtime, nginx) + Next.js container
-- [ ] Supabase Storage: map image upload endpoint, store asset record
+- [ ] `/setup`: list existing sessions per user — deferred to M4 with scene list UI
+- [ ] Supabase Storage: map image upload — deferred to M4 (needed for base map feature)
 
 ---
 

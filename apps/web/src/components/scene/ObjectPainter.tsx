@@ -66,7 +66,7 @@ export const OBJECT_CATALOG: CatalogEntry[] = [
 
 export const OBJECT_LABELS = OBJECT_CATALOG.map(o => o.label)
 
-const SHADOW_SCALE: Record<ShadowType, number> = { tree: 2.4, dead: 1.6, bush: 1.1, cover: 0.65 }
+export const SHADOW_SCALE: Record<ShadowType, number> = { tree: 2.4, dead: 1.6, bush: 1.1, cover: 0.65 }
 
 // ── blob shadow resources ─────────────────────────────────────────────────────
 
@@ -84,11 +84,11 @@ function makeBlobTexture() {
 }
 
 // Fixed allocation — instancedMesh args must never change at runtime.
-const MAX_PLACED = 2000
+export const MAX_PLACED = 2000
 
 const BLOB_TEX = makeBlobTexture()
-const BLOB_GEO = new THREE.CircleGeometry(1, 16)
-const BLOB_MAT = new THREE.MeshBasicMaterial({
+export const BLOB_GEO = new THREE.CircleGeometry(1, 16)
+export const BLOB_MAT = new THREE.MeshBasicMaterial({
   map: BLOB_TEX, transparent: true, depthWrite: false, color: 0x000000,
   stencilWrite: true,
   stencilRef:   1,
@@ -158,7 +158,7 @@ function InstancedFoliageAsset({ path, instances, castShadow }: InstancedAssetPr
   )
 }
 
-function InstancedPlacedAsset(props: InstancedAssetProps) {
+export function InstancedPlacedAsset(props: InstancedAssetProps) {
   return props.path.includes('/rocks/')
     ? <InstancedRockAsset {...props} />
     : <InstancedFoliageAsset {...props} />

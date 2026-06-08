@@ -85,5 +85,5 @@ export function useSceneDB(
     saveTimer.current = setTimeout(save, DEBOUNCE_MS)
   }, [save])
 
-  return { save, scheduleSave }
+  return { save, scheduleSave, sceneIdRef }
 }
