@@ -1,0 +1,108 @@
+services:
+
+  # ── Postgres ─────────────────────────────────────────────────────────────────
+  db:
+    image: supabase/postgres:15.8.1.060
+    restart: unless-stopped
+    healthcheck:
+      test: pg_isready -U postgres -h localhost
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  # ── Run migrations once on startup ───────────────────────────────────────────
+  migrate:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ../supabase/migrations:/migrations:ro
+    entrypoint: >
+      sh -c "for f in /migrations/*.sql; do
+               echo \"Applying $$f\";
+               psql -h db -U postgres -d postgres -f $$f;
+             done; echo 'Migrations complete.'"
+    restart: on-failure
+
+  # ── PostgREST — REST API ──────────────────────────────────────────────────────
+  rest:
+    image: postgrest/postgrest:v12.2.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+
+  # ── Supabase Realtime — WebSocket pub/sub ────────────────────────────────────
+  realtime:
+    image: supabase/realtime:v2.34.47
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: postgres
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      ERL_AFLAGS: -proto_dist inet_tcp
+      ENABLE_TAILSCALE: "false"
+      DNS_NODES: "''"
+      APP_NAME: realtime
+      FLY_ALLOC_ID: local
+      FLY_APP_NAME: realtime
+    command: >
+      sh -c "/app/bin/migrate && /app/bin/realtime eval 'Realtime.Release.seeds(Realtime.Repo)' && /app/bin/server"
+
+  # ── nginx — API gateway on port 8000 ─────────────────────────────────────────
+  api:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - rest
+      - realtime
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+  # ── Next.js app ───────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_SUPABASE_URL: http://${HOST_IP}:8000
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${ANON_KEY}
+
+volumes:
+  db-data:

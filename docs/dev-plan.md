@@ -53,6 +53,19 @@ SUPABASE_SERVICE_ROLE_KEY=<project service key>
 
 Zero code changes between environments.
 
+### LAN deployment (NAS / dedicated machine)
+
+```bash
+cd docker
+cp .env.example .env          # edit HOST_IP, POSTGRES_PASSWORD, secrets
+docker compose up -d          # starts postgres, realtime, postgrest, nginx, next.js
+# App at http://<HOST_IP>:3000
+# DM:      /setup  →  /control/[tableId]
+# Display: /display/[tableId]   (QR code shown on /setup)
+```
+
+The `migrate` container applies `supabase/migrations/*.sql` automatically on first boot. Data persists in the `db-data` Docker volume. To rebuild the Next.js image after code changes: `docker compose build web && docker compose up -d web`.
+
 ---
 
 ## Monorepo Structure
@@ -304,10 +317,10 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 - [x] Supabase project setup: `supabase init`, migrations for `table_config`, `asset`, `scene`
 - [x] `/setup`: create table in DB, display QR code for `/display/[tableId]` URL
 - [ ] `/setup`: list existing sessions (from localStorage) so DM can return to a previous table
-- [ ] Control client saves scene state to DB on change (debounced)
-- [ ] Control client loads scene state from DB on mount
-- [ ] Replace local JSON save/load (current `saveScene`/`loadScene` in `App.jsx`) with DB read/write
-- [ ] `docker-compose.yml`: Supabase local stack + Next.js container for LAN deployment
+- [x] Control client saves scene state to DB on change (debounced 500ms via `useSceneDB`)
+- [x] Control client loads scene state from DB on mount (creates default scene if none exists)
+- [x] Replace local JSON save/load with DB read/write
+- [x] `docker-compose.yml`: Supabase stack (postgres, PostgREST, Realtime, nginx) + Next.js container
 - [ ] Supabase Storage: map image upload endpoint, store asset record
 
 ---
