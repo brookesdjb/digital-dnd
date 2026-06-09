@@ -241,6 +241,21 @@ export function WeatherControls({ c }: { c: CockpitState }) {
     <div className="ck-stack">
       <Slider label="Rain intensity" value={weather.rain} min={0} max={2} step={0.05}
         onChange={v => setWeather({ rain: v })} fmt={v => v.toFixed(2) + '×'} />
+      <span className="ck-sub-head">Particles</span>
+      <div className="ck-split">
+        <Slider label="Embers"    value={weather.embers}    min={0} max={2} step={0.05}
+          onChange={v => setWeather({ embers: v })}    fmt={v => v.toFixed(2) + '×'} />
+        <Slider label="Ash"       value={weather.ash}       min={0} max={2} step={0.05}
+          onChange={v => setWeather({ ash: v })}       fmt={v => v.toFixed(2) + '×'} />
+        <Slider label="Fireflies" value={weather.fireflies} min={0} max={2} step={0.05}
+          onChange={v => setWeather({ fireflies: v })} fmt={v => v.toFixed(2) + '×'} />
+        <Slider label="Snow"      value={weather.snow}      min={0} max={2} step={0.05}
+          onChange={v => setWeather({ snow: v })}      fmt={v => v.toFixed(2) + '×'} />
+        <Slider label="Dust"      value={weather.dust}      min={0} max={2} step={0.05}
+          onChange={v => setWeather({ dust: v })}      fmt={v => v.toFixed(2) + '×'} />
+        <Slider label="Mist"      value={weather.mist}      min={0} max={2} step={0.05}
+          onChange={v => setWeather({ mist: v })}      fmt={v => v.toFixed(2) + '×'} />
+      </div>
       <span className="ck-sub-head">Vegetation wind</span>
       <div className="ck-split">
         <Slider label="Speed" value={grass.windSpeed} min={0} max={5} step={0.1}

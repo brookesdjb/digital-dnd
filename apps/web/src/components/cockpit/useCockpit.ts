@@ -47,7 +47,15 @@ export interface CockpitLight {
   bgColor: string
 }
 
-export interface CockpitWeather { rain: number }
+export interface CockpitWeather {
+  rain:      number
+  embers:    number
+  dust:      number
+  snow:      number
+  mist:      number
+  fireflies: number
+  ash:       number
+}
 export interface CockpitGrass   { windSpeed: number; windStrength: number }
 
 export interface CockpitView {
@@ -169,7 +177,10 @@ export function useCockpit(overrides?: CockpitOverrides): CockpitState {
     texture: ROAD_TEXTURE_LABELS[0], brush: 3, opacity: 1.0, erase: false,
   })
   const [light, _setLight] = useState<CockpitLight>({ ...DAY, preset: DAY.id, ...overrides?.light })
-  const [weather, _setWeather] = useState<CockpitWeather>({ rain: 1.0, ...overrides?.weather })
+  const [weather, _setWeather] = useState<CockpitWeather>({
+    rain: 1.0, embers: 0, dust: 0, snow: 0, mist: 0, fireflies: 0, ash: 0,
+    ...overrides?.weather,
+  })
   const [grass,   _setGrass]   = useState<CockpitGrass>({ windSpeed: 1.2, windStrength: 1.0, ...overrides?.grass })
   const [view, _setView] = useState<CockpitView>({
     grid: false, border: true, fov: 45, gridLineWidth: 1.0,

@@ -8,6 +8,7 @@ import { EffectComposer, N8AO, SMAA } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import type { DirectionalLight, HemisphereLight, PerspectiveCamera } from 'three'
 import { Rain } from './Rain'
+import { AmbientEffects } from './AmbientEffects'
 import { Scatter } from './Scatter'
 import { Ground, ROAD_TEXTURE_LABELS } from './Ground'
 import type { GroundIO } from './Ground'
@@ -124,6 +125,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
+    embersIntensity, dustIntensity, snowIntensity, mistIntensity, firefliesIntensity, ashIntensity,
     bakedGround, mapImages,
     isConnected,
   } = useSceneSync(tableId, groundIO, fogIO)
@@ -231,6 +233,17 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
         </Suspense>
 
         <Rain intensity={rainIntensity} fieldSize={fieldSize} />
+        <AmbientEffects
+          fieldSize={fieldSize}
+          hemSkyColor={hemSkyColor}
+          hemGroundColor={hemGroundColor}
+          embers={embersIntensity}
+          dust={dustIntensity}
+          snow={snowIntensity}
+          mist={mistIntensity}
+          fireflies={firefliesIntensity}
+          ash={ashIntensity}
+        />
 
         {showPerf && <PerfSampler />}
 

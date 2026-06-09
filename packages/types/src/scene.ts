@@ -25,6 +25,12 @@ export interface SceneState {
   fowColor:          string
   fowDisplayOpacity: number
   gridLineWidth:     number
+  embersIntensity?:    number
+  dustIntensity?:      number
+  snowIntensity?:      number
+  mistIntensity?:      number
+  firefliesIntensity?: number
+  ashIntensity?:       number
 }
 
 export type MapRotation = 0 | 90 | 180 | 270

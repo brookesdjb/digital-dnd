@@ -37,8 +37,14 @@ export function useSceneSync(
   const [windStrength,      setWindStrength]      = useState(1.0)
   const [fowColor,          setFowColor]          = useState('#0a0a1a')
   const [fowDisplayOpacity, setFowDisplayOpacity] = useState(0.92)
-  const [gridLineWidth,     setGridLineWidth]     = useState(1.0)
-  const [bakedGround,       setBakedGround]       = useState<string | null>(null)
+  const [gridLineWidth,        setGridLineWidth]        = useState(1.0)
+  const [embersIntensity,      setEmbersIntensity]      = useState(0)
+  const [dustIntensity,        setDustIntensity]        = useState(0)
+  const [snowIntensity,        setSnowIntensity]        = useState(0)
+  const [mistIntensity,        setMistIntensity]        = useState(0)
+  const [firefliesIntensity,   setFirefliesIntensity]   = useState(0)
+  const [ashIntensity,         setAshIntensity]         = useState(0)
+  const [bakedGround,          setBakedGround]          = useState<string | null>(null)
   const [mapImages,         setMapImages]         = useState<PlacedImage[]>([])
   const [isPaused,          setIsPaused]          = useState(false)
   const [isConnected,       setIsConnected]       = useState(false)
@@ -73,6 +79,12 @@ export function useSceneSync(
     setFowColor(s.fowColor)
     setFowDisplayOpacity(s.fowDisplayOpacity)
     setGridLineWidth(s.gridLineWidth ?? 1.0)
+    setEmbersIntensity(s.embersIntensity ?? 0)
+    setDustIntensity(s.dustIntensity ?? 0)
+    setSnowIntensity(s.snowIntensity ?? 0)
+    setMistIntensity(s.mistIntensity ?? 0)
+    setFirefliesIntensity(s.firefliesIntensity ?? 0)
+    setAshIntensity(s.ashIntensity ?? 0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -258,7 +270,13 @@ export function useSceneSync(
         if (p.windStrength      !== undefined) setWindStrength(p.windStrength      as number)
         if (p.fowColor          !== undefined) setFowColor(p.fowColor          as string)
         if (p.fowDisplayOpacity !== undefined) setFowDisplayOpacity(p.fowDisplayOpacity as number)
-        if (p.gridLineWidth     !== undefined) setGridLineWidth(p.gridLineWidth     as number)
+        if (p.gridLineWidth        !== undefined) setGridLineWidth(p.gridLineWidth        as number)
+        if (p.embersIntensity      !== undefined) setEmbersIntensity(p.embersIntensity      as number)
+        if (p.dustIntensity        !== undefined) setDustIntensity(p.dustIntensity        as number)
+        if (p.snowIntensity        !== undefined) setSnowIntensity(p.snowIntensity        as number)
+        if (p.mistIntensity        !== undefined) setMistIntensity(p.mistIntensity        as number)
+        if (p.firefliesIntensity   !== undefined) setFirefliesIntensity(p.firefliesIntensity   as number)
+        if (p.ashIntensity         !== undefined) setAshIntensity(p.ashIntensity         as number)
       })
       .subscribe((status) => {
         if (cancelled) return
@@ -300,6 +318,7 @@ export function useSceneSync(
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
+    embersIntensity, dustIntensity, snowIntensity, mistIntensity, firefliesIntensity, ashIntensity,
     bakedGround, mapImages,
     isConnected,
   }

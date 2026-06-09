@@ -7,6 +7,7 @@ import { EffectComposer, N8AO, SMAA } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { Rain } from './Rain'
+import { AmbientEffects } from './AmbientEffects'
 import { Scatter } from './Scatter'
 import { Ground } from './Ground'
 import type { GroundIO, BakeLighting } from './Ground'
@@ -231,12 +232,18 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
       windStrength:      c.grass.windStrength,
       fowColor:          c.fog.color,
       fowDisplayOpacity: c.fog.playerOpacity,
+      embersIntensity:    c.weather.embers,
+      dustIntensity:      c.weather.dust,
+      snowIntensity:      c.weather.snow,
+      mistIntensity:      c.weather.mist,
+      firefliesIntensity: c.weather.fireflies,
+      ashIntensity:       c.weather.ash,
     }
     schedulePublishState(state)
     setSceneState(state)
     scheduleStateSave()
   }, [
-    c.view.grid, c.weather.rain, c.light, c.shadows, c.grass,
+    c.view.grid, c.weather, c.light, c.shadows, c.grass,
     c.fog.color, c.fog.playerOpacity,
     schedulePublishState, setSceneState, scheduleStateSave,
   ])
@@ -266,7 +273,15 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
       blobSize:   loadedSceneState.blobSize,
       blobOpacity: loadedSceneState.blobOpacity,
     })
-    c.setWeather({ rain: loadedSceneState.rainIntensity })
+    c.setWeather({
+      rain:      loadedSceneState.rainIntensity,
+      embers:    loadedSceneState.embersIntensity    ?? 0,
+      dust:      loadedSceneState.dustIntensity      ?? 0,
+      snow:      loadedSceneState.snowIntensity      ?? 0,
+      mist:      loadedSceneState.mistIntensity      ?? 0,
+      fireflies: loadedSceneState.firefliesIntensity ?? 0,
+      ash:       loadedSceneState.ashIntensity       ?? 0,
+    })
     c.setGrass({ windSpeed: loadedSceneState.windSpeed, windStrength: loadedSceneState.windStrength })
     c.setFog({ color: loadedSceneState.fowColor, playerOpacity: loadedSceneState.fowDisplayOpacity })
     c.setView({ grid: loadedSceneState.showGrid, gridLineWidth: loadedSceneState.gridLineWidth ?? 1.0 })
@@ -418,6 +433,17 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
         </Suspense>
 
         <Rain intensity={c.weather.rain} fieldSize={fieldSize} />
+        <AmbientEffects
+          fieldSize={fieldSize}
+          hemSkyColor={c.light.hemSkyColor}
+          hemGroundColor={c.light.hemGroundColor}
+          embers={c.weather.embers}
+          dust={c.weather.dust}
+          snow={c.weather.snow}
+          mist={c.weather.mist}
+          fireflies={c.weather.fireflies}
+          ash={c.weather.ash}
+        />
 
         {useSSAO && (
           <EffectComposer>
