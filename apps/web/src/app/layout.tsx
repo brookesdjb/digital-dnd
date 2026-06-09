@@ -19,6 +19,11 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'D&D Table',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'D&D Table',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
