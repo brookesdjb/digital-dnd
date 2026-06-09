@@ -340,8 +340,8 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 - [x] Fog sync: enabled flag, color, density — display matches control
 - [x] Wind sync: speed and strength broadcast to display
 - [x] Blob size/opacity sync
-- [ ] Fog of War sync — deferred to M4 (FogLayer not built yet)
-- [ ] Scene activate sync — deferred to M4 (scene list not built yet)
+- [x] Fog of War sync — `FOG_UPDATED` broadcast (100ms debounce); `fowColor`/`fowDisplayOpacity` in `STATE_UPDATED`
+- [x] Scene activate sync — `SCENE_ACTIVATE` broadcast; display fetches and applies new scene from DB
 - [ ] Pause/resume sync — deferred to M4 (pause feature not built yet)
 - [ ] `FORCE_FULL_SYNC` — deferred to M5 polish
 
@@ -352,9 +352,10 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 **Goal:** feature parity with the spec's Milestone 1 feature set.
 
 - [ ] **Base map image**: upload PNG/JPG, set as ground texture; scale/offset/rotation controls
-- [ ] **Fog of War**: `FogLayer.tsx` using DataTexture mask; paint/erase brush; DM vs player opacity; syncs in real-time
-- [ ] **Scene list**: sidebar in control showing all scenes for the table; click to activate
-- [ ] **Multi-scene management**: add, delete, rename scenes; sort order
+- [x] **Fog of War**: `FogLayer.tsx` using DataTexture mask; brush + rect-select tools; DM vs player opacity; syncs in real-time via `FOG_UPDATED`; persists to `fog_mask` DB column
+- [x] **Object snap-to-grid**: toggle in Object Painting panel; snaps placed object positions and cursor to nearest integer grid cell
+- [x] **Scene list**: `SceneList.tsx` overlay panel (top-left); click to switch, double-click to rename, × to delete, + New Scene
+- [x] **Multi-scene management**: add, delete, rename; `switchScene` saves current, clears 3D state, loads new scene via ioRefs; `active_scene_id` updated in DB
 - [ ] **Pause screen**: control client toggles; display shows configurable overlay image
 - [ ] **Display calibration UI**: set physical screen dimensions in setup/table settings
 
