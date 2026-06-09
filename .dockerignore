@@ -1,0 +1,27 @@
+# Dependencies — reinstalled in the deps stage
+node_modules
+**/node_modules
+
+# Build artifacts — rebuilt in the builder stage
+**/.next
+**/dist
+**/tsconfig.tsbuildinfo
+
+# Git
+.git
+.gitignore
+
+# Dev tooling
+.github
+docker
+supabase
+docs
+scripts
+
+# Root screenshots / dev assets
+*.png
+
+# Local env files
+.env
+.env.local
+.env*.local
