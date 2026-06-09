@@ -5,7 +5,7 @@ import type { GroundIO } from '@/components/scene/Ground'
 import type { ObjectsIO } from '@/components/scene/ObjectPainter'
 import type { FogIO } from '@/components/scene/FogLayer'
 import { remoteLog } from '@/lib/log'
-import type { SceneState } from '@dnd-table/types'
+import type { SceneState, PlacedImage } from '@dnd-table/types'
 
 export type { SceneState }
 
@@ -27,7 +27,9 @@ export function useScenePublish(
   const objectsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const stateTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fogTimer     = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const imagesTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestState  = useRef<SceneState | null>(null)
+  const latestImages = useRef<PlacedImage[]>([])
 
   useEffect(() => {
     const ch = supabase.channel(`table:${tableId}`)
@@ -94,6 +96,21 @@ export function useScenePublish(
     fogTimer.current = setTimeout(publishFog, 100)
   }, [publishFog])
 
+  const publishImages = useCallback(() => {
+    const sceneId = sceneIdRef.current
+    const ch = channelRef.current
+    if (!sceneId || !ch) return
+    const images = latestImages.current
+    remoteLog('control', '→ IMAGES_UPDATED', { sceneId, count: images.length })
+    ch.send({ type: 'broadcast', event: 'IMAGES_UPDATED', payload: { sceneId, images } })
+  }, [sceneIdRef])
+
+  const schedulePublishImages = useCallback((images: PlacedImage[]) => {
+    latestImages.current = images
+    if (imagesTimer.current) clearTimeout(imagesTimer.current)
+    imagesTimer.current = setTimeout(publishImages, 100)
+  }, [publishImages])
+
   const publishSceneActivate = useCallback((newSceneId: string) => {
     const ch = channelRef.current
     if (!ch) return
@@ -107,5 +124,5 @@ export function useScenePublish(
     return () => clearInterval(id)
   }, [publishState])
 
-  return { schedulePublishTerrain, schedulePublishObjects, schedulePublishState, schedulePublishFog, publishSceneActivate }
+  return { schedulePublishTerrain, schedulePublishObjects, schedulePublishState, schedulePublishFog, schedulePublishImages, publishSceneActivate }
 }

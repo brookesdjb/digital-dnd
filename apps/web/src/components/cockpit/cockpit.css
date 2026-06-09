@@ -293,6 +293,20 @@
 .gl-sec.open .gl-sec-chev { transform: rotate(180deg); }
 .gl-sec-body { padding: 4px 14px 16px; }
 
+/* ── image library ───────────────────────────────────────────────────────── */
+.ck-img-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ck-img-thumb { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px; border-radius: 10px; background: var(--panel-2); border: 1.5px solid transparent; transition: 0.14s; overflow: hidden; cursor: pointer; text-align: center; }
+.ck-img-thumb:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); }
+.ck-img-thumb img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; display: block; }
+.ck-img-name { font-size: 10px; font-weight: 600; color: var(--txt-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ck-img-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; background: var(--panel-2); border: 1.5px solid transparent; cursor: pointer; transition: 0.14s; }
+.ck-img-row:hover { background: rgba(255,255,255,0.05); }
+.ck-img-row.on { border-color: var(--acc); background: var(--acc-soft); }
+.ck-img-row-name { flex: 1; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ck-img-row-del { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; color: var(--txt-dim); transition: 0.12s; flex-shrink: 0; }
+.ck-img-row-del:hover { background: rgba(220,80,70,0.2); color: #e8857c; }
+.ck-empty { font-size: 12px; color: var(--txt-dim); text-align: center; padding: 10px 0; }
+
 /* ── shared animation ────────────────────────────────────────────────────── */
 @keyframes ck-pulse { 50% { opacity: 0.35; } }
 

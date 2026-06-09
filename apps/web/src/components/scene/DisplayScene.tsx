@@ -16,6 +16,7 @@ import { BattleGrid } from './BattleGrid'
 import { FogLayer } from './FogLayer'
 import type { FogIO } from './FogLayer'
 import { PlacedObjectsRenderer } from './PlacedObjectsRenderer'
+import { MapImages } from './MapImages'
 import { useSceneSync } from '@/lib/sync/useSceneSync'
 import { PerfSampler, PerformanceOverlay } from './PerformanceHUD'
 
@@ -39,7 +40,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
-    bakedGround,
+    bakedGround, mapImages,
   } = useSceneSync(tableId, groundIO, fogIO)
 
   const fieldSize = Math.ceil(Math.max(screenW, screenH)) + 8
@@ -140,6 +141,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
             blobOpacity={blobOpacity}
             castShadow={useSoftShadows}
           />
+          <MapImages images={mapImages} />
         </Suspense>
 
         <Rain intensity={rainIntensity} fieldSize={fieldSize} />

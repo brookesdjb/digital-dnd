@@ -2,17 +2,18 @@
 
 import React, { useState } from 'react'
 import { Icons, ago } from './primitives'
-import { FogControls, ObjectControls, RoadControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel } from './panels'
+import { FogControls, ObjectControls, RoadControls, ImagesControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel } from './panels'
 import type { CockpitState } from './useCockpit'
 import type { PanelActions } from './panels'
 
-type RailId = 'scenes' | 'fog' | 'object' | 'road' | 'light' | 'weather' | 'view' | 'shadows'
+type RailId = 'scenes' | 'fog' | 'object' | 'road' | 'image' | 'light' | 'weather' | 'view' | 'shadows'
 
 const RAIL_ITEMS: Array<{ id: RailId; icon: (p: { s?: number }) => React.ReactElement; label: string }> = [
   { id: 'scenes',  icon: Icons.layers,  label: 'Scenes'   },
   { id: 'fog',     icon: Icons.fog,     label: 'Fog'      },
   { id: 'object',  icon: Icons.tree,    label: 'Objects'  },
   { id: 'road',    icon: Icons.brush,   label: 'Terrain'  },
+  { id: 'image',   icon: Icons.image,   label: 'Images'   },
   { id: 'light',   icon: Icons.sun,     label: 'Lighting' },
   { id: 'weather', icon: Icons.rain,    label: 'Weather'  },
   { id: 'view',    icon: Icons.grid,    label: 'View'     },
@@ -21,8 +22,9 @@ const RAIL_ITEMS: Array<{ id: RailId; icon: (p: { s?: number }) => React.ReactEl
 
 const FLYOUT_TITLES: Record<RailId, string> = {
   scenes: 'SCENES', fog: 'FOG OF WAR', object: 'OBJECT PAINTING',
-  road: 'TERRAIN PAINTING', light: 'LIGHTING & MOOD',
-  weather: 'WEATHER & WIND', view: 'VIEW & GRID', shadows: 'SHADOWS',
+  road: 'TERRAIN PAINTING', image: 'MAP IMAGES',
+  light: 'LIGHTING & MOOD', weather: 'WEATHER & WIND',
+  view: 'VIEW & GRID', shadows: 'SHADOWS',
 }
 
 interface FlyoutBodyProps { id: RailId; c: CockpitState; actions: PanelActions }
@@ -32,6 +34,7 @@ function FlyoutBody({ id, c, actions }: FlyoutBodyProps) {
     case 'fog':     return <FogControls     c={c} actions={actions} />
     case 'object':  return <ObjectControls  c={c} actions={actions} />
     case 'road':    return <RoadControls    c={c} />
+    case 'image':   return <ImagesControls  c={c} actions={actions} />
     case 'light':   return <LightingControls c={c} />
     case 'weather': return <WeatherControls c={c} />
     case 'view':    return <ViewControls    c={c} actions={actions} />
@@ -46,12 +49,12 @@ export function DirectionRail({ c, actions, savedAt }: Props) {
   const scene = actions.scenes.find(s => s.id === actions.activeSceneId) ?? actions.scenes[0]
 
   const pick = (id: RailId) => {
-    if (id === 'fog' || id === 'object' || id === 'road') c.setTool(id)
+    if (id === 'fog' || id === 'object' || id === 'road' || id === 'image') c.setTool(id)
     setOpen(cur => cur === id ? null : id)
   }
 
   const isToolActive = (id: RailId) =>
-    (id === 'fog' || id === 'object' || id === 'road') && c.tool === id
+    (id === 'fog' || id === 'object' || id === 'road' || id === 'image') && c.tool === id
 
   return (
     <div className="dir dir-rail">

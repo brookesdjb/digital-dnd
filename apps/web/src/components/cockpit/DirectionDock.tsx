@@ -2,20 +2,21 @@
 
 import React, { useState } from 'react'
 import { Icons, ago } from './primitives'
-import { FogControls, ObjectControls, RoadControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel } from './panels'
+import { FogControls, ObjectControls, RoadControls, ImagesControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel } from './panels'
 import type { CockpitState } from './useCockpit'
 import type { PanelActions } from './panels'
 
-type PanelId = 'fog' | 'object' | 'road' | 'light' | 'weather' | 'scenes' | 'view' | 'shadows' | null
+type PanelId = 'fog' | 'object' | 'road' | 'image' | 'light' | 'weather' | 'scenes' | 'view' | 'shadows' | null
 
 const TRAY_META: Record<NonNullable<PanelId>, { title: string; icon: (p: { s?: number }) => React.ReactElement; wide?: boolean }> = {
-  fog:     { title: 'Fog of War',      icon: Icons.fog     },
+  fog:     { title: 'Fog of War',      icon: Icons.fog,    wide: true },
   object:  { title: 'Objects',         icon: Icons.tree,   wide: true },
   road:    { title: 'Terrain Paint',   icon: Icons.brush,  wide: true },
+  image:   { title: 'Map Images',      icon: Icons.image,  wide: true },
   light:   { title: 'Lighting & Mood', icon: Icons.sun,    wide: true },
   weather: { title: 'Weather & Wind',  icon: Icons.rain    },
   scenes:  { title: 'Scenes',          icon: Icons.layers  },
-  view:    { title: 'View & Grid',      icon: Icons.grid    },
+  view:    { title: 'View & Grid',     icon: Icons.grid    },
   shadows: { title: 'Shadows',         icon: Icons.shadows },
 }
 
@@ -30,6 +31,7 @@ function DockTray({ panel, c, actions, onClose }: DockTrayProps) {
     case 'fog':     body = <FogControls     c={c} actions={actions} />; break
     case 'object':  body = <ObjectControls  c={c} actions={actions} />; break
     case 'road':    body = <RoadControls    c={c} />; break
+    case 'image':   body = <ImagesControls  c={c} actions={actions} />; break
     case 'light':   body = <LightingControls c={c} />; break
     case 'weather': body = <WeatherControls c={c} />; break
     case 'scenes':  body = <ScenePanel      actions={actions} />; break
@@ -64,7 +66,7 @@ interface Props { c: CockpitState; actions: PanelActions; savedAt: number }
 export function DirectionDock({ c, actions, savedAt }: Props) {
   const [panel, setPanel] = useState<PanelId>(null)
 
-  const pickTool = (t: 'fog' | 'object' | 'road' | 'select') => {
+  const pickTool = (t: 'fog' | 'object' | 'road' | 'image' | 'select') => {
     c.setTool(t)
     setPanel(t === 'select' ? null : t as PanelId)
   }
@@ -101,6 +103,7 @@ export function DirectionDock({ c, actions, savedAt }: Props) {
           <DockTool icon={Icons.fog}    label="Fog"     active={c.tool === 'fog'}    onClick={() => pickTool('fog')} />
           <DockTool icon={Icons.tree}   label="Objects" active={c.tool === 'object'} onClick={() => pickTool('object')} />
           <DockTool icon={Icons.brush}  label="Terrain" active={c.tool === 'road'}   onClick={() => pickTool('road')} />
+          <DockTool icon={Icons.image}  label="Images"  active={c.tool === 'image'}  onClick={() => pickTool('image')} />
         </div>
         <div className="dk-sep" />
         <div className="dk-group">

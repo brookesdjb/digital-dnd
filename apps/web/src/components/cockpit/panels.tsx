@@ -1,14 +1,18 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { Slider, Toggle, Segmented, Btn, FieldRow, ColorDots, TextureSwatch, LightPresets, Icons } from './primitives'
 import type { CockpitState } from './useCockpit'
 import { OBJECT_CATALOG } from '@/components/scene/ObjectPainter'
 import { ROAD_TEXTURES, ROAD_TEXTURE_LABELS } from '@/components/scene/Ground'
 import { SCREEN_SIZE_LABELS } from '@/components/scene/BattleGrid'
 import type { SceneRow } from '@/lib/sync/useSceneDB'
+import type { AssetRecord } from '@/lib/useAssets'
+import type { PlacedImage } from '@dnd-table/types'
 
 // ── action callbacks passed down from ControlScene ───────────────────────────
+
+export type { AssetRecord }
 
 export interface PanelActions {
   scenes:        SceneRow[]
@@ -24,6 +28,16 @@ export interface PanelActions {
   onObjectsUndo:      () => void
   onObjectsClearAll:  () => void
   onRecenter:         () => void
+  // Image library
+  assets:            AssetRecord[]
+  assetsLoading:     boolean
+  mapImages:         PlacedImage[]
+  selectedImageId:   string | null
+  onUploadAsset:     (file: File) => Promise<void>
+  onPlaceImage:      (asset: AssetRecord) => void
+  onSelectImage:     (id: string | null) => void
+  onUpdateImage:     (id: string, patch: Partial<PlacedImage>) => void
+  onRemoveImage:     (id: string) => void
 }
 
 // ── model catalog grouped by category ────────────────────────────────────────
@@ -351,9 +365,112 @@ export function ScenePanel({ actions }: { actions: PanelActions }) {
   )
 }
 
+// ── ImagesControls ────────────────────────────────────────────────────────────
+
+export function ImagesControls({ actions }: { c: CockpitState; actions: PanelActions }) {
+  const { assets, assetsLoading, mapImages, selectedImageId } = actions
+  const fileRef = useRef<HTMLInputElement>(null)
+  const selected = mapImages.find(img => img.id === selectedImageId) ?? null
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const fileArr = Array.from(files)  // snapshot before input is cleared
+    for (const file of fileArr) {
+      await actions.onUploadAsset(file)
+    }
+    if (fileRef.current) fileRef.current.value = ''  // reset after upload so same file can be re-picked
+  }
+
+  return (
+    <div className="ck-stack">
+      {/* Asset Library */}
+      <span className="ck-sub-head">Asset library</span>
+      <input
+        ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif"
+        multiple style={{ display: 'none' }}
+        onChange={e => handleFiles(e.target.files)}
+      />
+      <Btn variant="ghost" full icon={Icons.upload} onClick={() => fileRef.current?.click()}>
+        {assetsLoading ? 'Uploading…' : 'Upload image'}
+      </Btn>
+
+      {assets.length > 0 && (
+        <div className="ck-img-grid">
+          {assets.map(asset => (
+            <button
+              key={asset.id}
+              className="ck-img-thumb"
+              title={asset.filename}
+              onClick={() => actions.onPlaceImage(asset)}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={asset.url} alt={asset.filename} draggable={false} />
+              <span className="ck-img-name">{asset.filename.replace(/\.[^.]+$/, '')}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {assets.length === 0 && !assetsLoading && (
+        <span className="ck-empty">No images uploaded yet</span>
+      )}
+
+      {/* Placed images list */}
+      {mapImages.length > 0 && (
+        <>
+          <span className="ck-sub-head">Placed images</span>
+          {mapImages.map(img => {
+            const asset = assets.find(a => a.id === img.assetId)
+            const label = asset?.filename.replace(/\.[^.]+$/, '') ?? 'Image'
+            return (
+              <div
+                key={img.id}
+                className={`ck-img-row${img.id === selectedImageId ? ' on' : ''}`}
+                onClick={() => actions.onSelectImage(img.id === selectedImageId ? null : img.id)}
+              >
+                <span className="ck-img-row-name">{label}</span>
+                <button
+                  className="ck-img-row-del"
+                  onClick={e => { e.stopPropagation(); actions.onRemoveImage(img.id) }}
+                >
+                  <Icons.trash s={14} />
+                </button>
+              </div>
+            )
+          })}
+        </>
+      )}
+
+      {/* Selected image properties */}
+      {selected && (
+        <>
+          <span className="ck-sub-head">Image settings</span>
+          <div className="ck-split">
+            <Slider label="Width (in)" value={selected.widthIn} min={1} max={120} step={0.5}
+              onChange={v => actions.onUpdateImage(selected.id, { widthIn: v })}
+              fmt={v => v.toFixed(1) + '"'} />
+            <Slider label="Height (in)" value={selected.heightIn} min={1} max={120} step={0.5}
+              onChange={v => actions.onUpdateImage(selected.id, { heightIn: v })}
+              fmt={v => v.toFixed(1) + '"'} />
+          </div>
+          <Slider label="Rotation" value={selected.rotation} min={0} max={360} step={1}
+            onChange={v => actions.onUpdateImage(selected.id, { rotation: v })}
+            fmt={v => v + '°'} />
+          <Slider label="Edge fade" value={selected.edgeFade} min={0} max={0.3} step={0.01}
+            onChange={v => actions.onUpdateImage(selected.id, { edgeFade: v })}
+            fmt={v => Math.round(v * 100) + '%'} />
+          <Btn variant="danger" full icon={Icons.trash}
+            onClick={() => actions.onRemoveImage(selected.id)}>
+            Remove image
+          </Btn>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── toolMeta — maps tool id → title + icon + panel component ─────────────────
 
-export type ToolId = 'fog' | 'object' | 'road'
+export type ToolId = 'fog' | 'object' | 'road' | 'image'
 
 interface ToolMeta {
   title: string
@@ -362,7 +479,8 @@ interface ToolMeta {
 }
 
 export const TOOL_META: Record<ToolId, ToolMeta> = {
-  fog:    { title: 'Fog of War',     icon: Icons.fog,   Panel: FogControls    },
-  object: { title: 'Objects',        icon: Icons.tree,  Panel: ObjectControls },
-  road:   { title: 'Terrain Paint',  icon: Icons.brush, Panel: RoadControls   },
+  fog:    { title: 'Fog of War',    icon: Icons.fog,   Panel: FogControls    },
+  object: { title: 'Objects',       icon: Icons.tree,  Panel: ObjectControls },
+  road:   { title: 'Terrain Paint', icon: Icons.brush, Panel: RoadControls   },
+  image:  { title: 'Map Images',    icon: Icons.image, Panel: ImagesControls },
 }

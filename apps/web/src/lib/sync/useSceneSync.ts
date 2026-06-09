@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { FogIO } from '@/components/scene/FogLayer'
-import type { PlacedObject, SceneState } from '@dnd-table/types'
+import type { PlacedObject, PlacedImage, SceneState } from '@dnd-table/types'
 import { remoteLog } from '@/lib/log'
 
 export function useSceneSync(
@@ -38,6 +38,7 @@ export function useSceneSync(
   const [fowColor,          setFowColor]          = useState('#0a0a1a')
   const [fowDisplayOpacity, setFowDisplayOpacity] = useState(0.92)
   const [bakedGround,       setBakedGround]       = useState<string | null>(null)
+  const [mapImages,         setMapImages]         = useState<PlacedImage[]>([])
   // Pending buffers handle the race where a Realtime message arrives before ioRefs mount.
   const pendingTerrain = useRef<string[] | null>(null)
   const pendingFogMask = useRef<string | null>(null)
@@ -97,12 +98,13 @@ export function useSceneSync(
       if (sceneError) console.error('useSceneSync: scene fetch', sceneError)
       if (cancelled || !scene) return
 
-      const terrain = scene.terrain as { layers?: string[]; bakedGround?: string; sceneState?: SceneState } | null
+      const terrain = scene.terrain as { layers?: string[]; bakedGround?: string; sceneState?: SceneState; mapImages?: PlacedImage[] } | null
       const objs    = scene.objects as PlacedObject[] | null
       const fogMask = (scene as { fog_mask?: string | null }).fog_mask ?? null
 
       if (terrain?.bakedGround) setBakedGround(terrain.bakedGround)
       if (terrain?.sceneState) applySceneState(terrain.sceneState)
+      setMapImages(terrain?.mapImages ?? [])
       if (terrain?.layers) {
         if (groundIO.current) {
           await groundIO.current.load(terrain.layers)
@@ -154,6 +156,7 @@ export function useSceneSync(
         if (fogIO.current) fogIO.current.clear()
         setObjects([])
         setBakedGround(null)
+        setMapImages([])
         pendingTerrain.current = null
         pendingFogMask.current = null
 
@@ -164,12 +167,13 @@ export function useSceneSync(
           .single()
         if (!scene) return
 
-        const terrain  = scene.terrain  as { layers?: string[]; bakedGround?: string; sceneState?: SceneState } | null
+        const terrain  = scene.terrain  as { layers?: string[]; bakedGround?: string; sceneState?: SceneState; mapImages?: PlacedImage[] } | null
         const objs     = scene.objects  as PlacedObject[] | null
         const fogMask  = (scene as { fog_mask?: string | null }).fog_mask ?? null
 
         if (terrain?.bakedGround) setBakedGround(terrain.bakedGround)
         if (terrain?.sceneState) applySceneState(terrain.sceneState)
+        setMapImages(terrain?.mapImages ?? [])
         if (terrain?.layers) {
           if (groundIO.current) await groundIO.current.load(terrain.layers)
           else pendingTerrain.current = terrain.layers
@@ -199,6 +203,11 @@ export function useSceneSync(
         } else {
           pendingFogMask.current = fogMask
         }
+      })
+      .on('broadcast', { event: 'IMAGES_UPDATED' }, ({ payload }) => {
+        const images = (payload as { images: PlacedImage[] }).images
+        remoteLog('display', '← IMAGES_UPDATED', { count: images.length })
+        setMapImages(images)
       })
       .on('broadcast', { event: 'OBJECTS_UPDATED' }, ({ payload }) => {
         const objects = (payload as { objects: PlacedObject[] }).objects
@@ -247,6 +256,6 @@ export function useSceneSync(
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
-    bakedGround,
+    bakedGround, mapImages,
   }
 }

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { Icons, Segmented, ago } from './primitives'
-import { FogControls, ObjectControls, RoadControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel } from './panels'
+import { FogControls, ObjectControls, RoadControls, ImagesControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel } from './panels'
 import type { CockpitState, CockpitTool } from './useCockpit'
 import type { PanelActions } from './panels'
 
@@ -37,14 +37,20 @@ export function DirectionGlass({ c, actions, savedAt }: Props) {
 
   // Active tool panel
   const activeTool = c.tool === 'select' ? 'fog' : c.tool
-  const toolTitle = activeTool === 'fog' ? 'Fog of War' : activeTool === 'object' ? 'Objects' : 'Terrain Paint'
-  const ToolIcon = activeTool === 'fog' ? Icons.fog : activeTool === 'object' ? Icons.tree : Icons.brush
+  const toolTitle =
+    activeTool === 'fog'    ? 'Fog of War'    :
+    activeTool === 'object' ? 'Objects'       :
+    activeTool === 'image'  ? 'Map Images'    : 'Terrain Paint'
+  const ToolIcon =
+    activeTool === 'fog'    ? Icons.fog   :
+    activeTool === 'object' ? Icons.tree  :
+    activeTool === 'image'  ? Icons.image : Icons.brush
 
-  const toolBody = activeTool === 'fog'
-    ? <FogControls    c={c} actions={actions} />
-    : activeTool === 'object'
-      ? <ObjectControls c={c} actions={actions} />
-      : <RoadControls c={c} />
+  const toolBody =
+    activeTool === 'fog'    ? <FogControls    c={c} actions={actions} /> :
+    activeTool === 'object' ? <ObjectControls c={c} actions={actions} /> :
+    activeTool === 'image'  ? <ImagesControls c={c} actions={actions} /> :
+                              <RoadControls   c={c} />
 
   return (
     <div className="dir dir-glass">
@@ -79,6 +85,7 @@ export function DirectionGlass({ c, actions, savedAt }: Props) {
               { value: 'fog',    label: 'Fog',     icon: Icons.fog   },
               { value: 'object', label: 'Objects', icon: Icons.tree  },
               { value: 'road',   label: 'Terrain', icon: Icons.brush },
+              { value: 'image',  label: 'Images',  icon: Icons.image },
             ]} />
         </div>
 

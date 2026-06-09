@@ -15,8 +15,12 @@ import { ObjectPainter } from './ObjectPainter'
 import type { ObjectsIO } from './ObjectPainter'
 import { FogLayer } from './FogLayer'
 import type { FogIO } from './FogLayer'
+import { MapImages } from './MapImages'
 import { useSceneDB } from '@/lib/sync/useSceneDB'
 import { useScenePublish } from '@/lib/sync/useScenePublish'
+import { useAssets } from '@/lib/useAssets'
+import type { PlacedImage } from '@dnd-table/types'
+import type { AssetRecord } from '@/lib/useAssets'
 import { useCockpit } from '@/components/cockpit/useCockpit'
 import type { CockpitShadows, CockpitOverrides } from '@/components/cockpit/useCockpit'
 import { CockpitOverlay } from '@/components/cockpit/CockpitOverlay'
@@ -78,16 +82,26 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const [savedAt, setSavedAt] = useState(Date.now() - 42000)
   const [savedFlash, setSavedFlash] = useState(false)
 
+  // Map images state — placed image overlays per scene
+  const [mapImages,       setMapImages]       = useState<PlacedImage[]>([])
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
+
   const {
     save: dbSave, scheduleSave, scheduleStateSave, sceneIdRef, setBgColor, setSceneState,
-    loadedSceneState, screenW: dbScreenW, screenH: dbScreenH,
+    setMapImages: setMapImagesRef,
+    loadedSceneState, loadedMapImages, screenW: dbScreenW, screenH: dbScreenH,
     scenes, activeSceneId, switchScene, createScene, deleteScene, renameScene,
   } = useSceneDB(tableId, groundIO, objectsIO, fogIO)
 
   const {
     schedulePublishTerrain, schedulePublishObjects, schedulePublishState,
-    schedulePublishFog, publishSceneActivate,
+    schedulePublishFog, schedulePublishImages, publishSceneActivate,
   } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO, fogIO)
+
+  const { assets, loading: assetsLoading, fetchAssets, uploadAsset } = useAssets(tableId)
+
+  // Fetch asset library once on mount
+  useEffect(() => { fetchAssets() }, [fetchAssets])
 
   const handleSave = useCallback(async () => {
     let bakedGround: string | undefined
@@ -123,6 +137,67 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const onTerrainChange = useCallback(() => { schedulePublishTerrain(); scheduleSave() }, [schedulePublishTerrain, scheduleSave])
   const onObjectsChange = useCallback(() => { schedulePublishObjects(); scheduleSave() }, [schedulePublishObjects, scheduleSave])
   const onFogChange     = useCallback(() => { schedulePublishFog();    scheduleSave() }, [schedulePublishFog,    scheduleSave])
+
+  // Keep the DB ref in sync so save() picks up the latest images
+  useEffect(() => { setMapImagesRef(mapImages) }, [mapImages, setMapImagesRef])
+
+  // Restore mapImages when DB loads (page refresh or scene switch)
+  useEffect(() => {
+    if (loadedMapImages !== null) setMapImages(loadedMapImages)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedMapImages])
+
+  const onImagesChange = useCallback((imgs: PlacedImage[]) => {
+    schedulePublishImages(imgs)
+    scheduleSave()
+  }, [schedulePublishImages, scheduleSave])
+
+  const handlePlaceImage = useCallback((asset: AssetRecord) => {
+    const aspect = asset.widthPx && asset.heightPx ? asset.widthPx / asset.heightPx : 1
+    const widthIn = 30
+    const img: PlacedImage = {
+      id: crypto.randomUUID(),
+      assetId: asset.id,
+      storageKey: asset.storageKey,
+      x: 0, z: 0,
+      widthIn,
+      heightIn: widthIn / aspect,
+      rotation: 0,
+      edgeFade: 0.05,
+    }
+    setMapImages(prev => { const next = [...prev, img]; onImagesChange(next); return next })
+    setSelectedImageId(img.id)
+    c.setTool('image')
+  }, [onImagesChange, c])
+
+  const handleUpdateImage = useCallback((id: string, patch: Partial<PlacedImage>) => {
+    setMapImages(prev => {
+      const next = prev.map(img => img.id === id ? { ...img, ...patch } : img)
+      onImagesChange(next)
+      return next
+    })
+  }, [onImagesChange])
+
+  const handleRemoveImage = useCallback((id: string) => {
+    setMapImages(prev => {
+      const next = prev.filter(img => img.id !== id)
+      onImagesChange(next)
+      return next
+    })
+    setSelectedImageId(prev => prev === id ? null : prev)
+  }, [onImagesChange])
+
+  const handleUploadAsset = useCallback(async (file: File) => {
+    await uploadAsset(file)
+  }, [uploadAsset])
+
+  const handleMoveImage = useCallback((id: string, x: number, z: number) => {
+    setMapImages(prev => prev.map(img => img.id === id ? { ...img, x, z } : img))
+  }, [])
+
+  const handleImagesDragEnd = useCallback(() => {
+    setMapImages(prev => { onImagesChange(prev); return prev })
+  }, [onImagesChange])
 
   // Keep DB bgColor ref in sync
   useEffect(() => { setBgColor(c.light.bgColor) }, [c.light.bgColor, setBgColor])
@@ -235,12 +310,13 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   ]
   const shadowHalf = fieldSize / 2
 
-  const fogPaintMode = c.tool === 'fog'
-  const fogEraseMode = c.fog.mode === 'reveal' || c.fog.mode === 'erase'
-  const paintMode    = c.tool === 'road'
+  const fogPaintMode   = c.tool === 'fog'
+  const fogEraseMode   = c.fog.mode === 'reveal' || c.fog.mode === 'erase'
+  const paintMode      = c.tool === 'road'
+  const imagePaintMode = c.tool === 'image'
 
-  const painting = paintMode || objectPaintMode || fogPaintMode
-  const cursor   = painting ? 'none' : 'auto'
+  const painting = paintMode || objectPaintMode || fogPaintMode || imagePaintMode
+  const cursor   = (paintMode || objectPaintMode || fogPaintMode) ? 'none' : 'auto'
 
   return (
     <div style={{ width: '100%', height: '100%', background: c.light.bgColor, cursor }}>
@@ -320,6 +396,14 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
             blobOpacity={c.shadows.blobOpacity}
             onChange={onObjectsChange}
           />
+          <MapImages
+            images={mapImages}
+            imageMode={imagePaintMode}
+            selectedImageId={selectedImageId}
+            onSelect={setSelectedImageId}
+            onMove={handleMoveImage}
+            onChange={handleImagesDragEnd}
+          />
         </Suspense>
 
         <Rain intensity={c.weather.rain} fieldSize={fieldSize} />
@@ -373,6 +457,15 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
               controlsRef.current.update()
             }
           },
+          assets,
+          assetsLoading,
+          mapImages,
+          selectedImageId,
+          onUploadAsset:  handleUploadAsset,
+          onPlaceImage:   handlePlaceImage,
+          onSelectImage:  setSelectedImageId,
+          onUpdateImage:  handleUpdateImage,
+          onRemoveImage:  handleRemoveImage,
         }}
       />
     </div>

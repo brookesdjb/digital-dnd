@@ -5,7 +5,7 @@ import { OBJECT_CATALOG } from '@/components/scene/ObjectPainter'
 import { ROAD_TEXTURE_LABELS } from '@/components/scene/Ground'
 import { SCREEN_SIZE_LABELS } from '@/components/scene/BattleGrid'
 
-export type CockpitTool = 'select' | 'fog' | 'object' | 'road'
+export type CockpitTool = 'select' | 'fog' | 'object' | 'road' | 'image'
 
 export interface CockpitFog {
   mode: 'hide' | 'reveal' | 'erase'

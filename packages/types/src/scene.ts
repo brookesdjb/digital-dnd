@@ -30,11 +30,24 @@ export type MapRotation = 0 | 90 | 180 | 270
 
 export type WeatherType = 'none' | 'rain'
 
+export interface PlacedImage {
+  id: string
+  assetId: string
+  storageKey: string  // path in Supabase Storage map-assets bucket
+  x: number          // world X (inches from center)
+  z: number          // world Z
+  widthIn: number    // width in world units (inches)
+  heightIn: number   // height in world units
+  rotation: number   // Y rotation in degrees
+  edgeFade: number   // 0.0–0.3 fraction of each edge that fades to transparent
+}
+
 export interface TerrainState {
   textures: string[]
   layers: string[]       // base64 PNG masks, one per texture
   bakedGround?: string   // base64 JPEG — composited flat texture, used by display route
   sceneState?: SceneState // lighting, shadows, weather — persisted alongside terrain
+  mapImages?: PlacedImage[] // uploaded map image overlays per scene
 }
 
 export interface PlacedObject {

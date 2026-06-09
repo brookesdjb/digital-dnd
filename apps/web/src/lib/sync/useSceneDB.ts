@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { ObjectsIO } from '@/components/scene/ObjectPainter'
 import type { FogIO } from '@/components/scene/FogLayer'
-import type { SceneState } from '@dnd-table/types'
+import type { SceneState, PlacedImage } from '@dnd-table/types'
 
 const DEBOUNCE_MS = 500
 
@@ -26,6 +26,7 @@ export function useSceneDB(
   const bgColorRef      = useRef<string>('#6a8fa8')
   const bakedGroundRef  = useRef<string | undefined>(undefined)
   const sceneStateRef   = useRef<SceneState | null>(null)
+  const mapImagesRef    = useRef<PlacedImage[]>([])
   // Cache of last-encoded terrain/fog — used by saveStateOnly to avoid re-encoding.
   const lastLayersRef   = useRef<string[]>([])
   const lastFogRef      = useRef<string | null>(null)
@@ -37,6 +38,7 @@ export function useSceneDB(
   const [scenes, setScenes]             = useState<SceneRow[]>([])
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
   const [loadedSceneState, setLoadedSceneState] = useState<SceneState | null>(null)
+  const [loadedMapImages,  setLoadedMapImages]  = useState<PlacedImage[] | null>(null)
   // Stable client — createClient() must not be called on every render (breaks useCallback deps).
   const supabase = useMemo(() => createClient(), [])
 
@@ -99,7 +101,7 @@ export function useSceneDB(
       setActiveSceneId(scene.id)
       if (scene.bg_color) bgColorRef.current = scene.bg_color
 
-      const terrain = scene.terrain as { layers?: string[]; bakedGround?: string; sceneState?: SceneState } | null
+      const terrain = scene.terrain as { layers?: string[]; bakedGround?: string; sceneState?: SceneState; mapImages?: PlacedImage[] } | null
       const objects = scene.objects as unknown[] | null
 
       bakedGroundRef.current = terrain?.bakedGround ?? undefined
@@ -107,6 +109,8 @@ export function useSceneDB(
         sceneStateRef.current = terrain.sceneState
         setLoadedSceneState(terrain.sceneState)
       }
+      mapImagesRef.current = terrain?.mapImages ?? []
+      setLoadedMapImages(terrain?.mapImages ?? [])
 
       if (terrain?.layers) {
         lastLayersRef.current = terrain.layers
@@ -153,9 +157,10 @@ export function useSceneDB(
 
     if (opts?.bakedGround !== undefined) bakedGroundRef.current = opts.bakedGround
 
-    const terrain: { layers: string[]; bakedGround?: string; sceneState?: SceneState } = { layers: layers ?? [] }
+    const terrain: { layers: string[]; bakedGround?: string; sceneState?: SceneState; mapImages?: PlacedImage[] } = { layers: layers ?? [] }
     if (bakedGroundRef.current) terrain.bakedGround = bakedGroundRef.current
     if (sceneStateRef.current) terrain.sceneState = sceneStateRef.current
+    if (mapImagesRef.current.length > 0) terrain.mapImages = mapImagesRef.current
 
     await supabase
       .from('scene')
@@ -168,11 +173,12 @@ export function useSceneDB(
   const saveStateOnly = useCallback(async () => {
     const sceneId = sceneIdRef.current
     if (!sceneId) return
-    const terrain: { layers: string[]; bakedGround?: string; sceneState?: SceneState } = {
+    const terrain: { layers: string[]; bakedGround?: string; sceneState?: SceneState; mapImages?: PlacedImage[] } = {
       layers: lastLayersRef.current,
     }
     if (bakedGroundRef.current) terrain.bakedGround = bakedGroundRef.current
     if (sceneStateRef.current) terrain.sceneState = sceneStateRef.current
+    if (mapImagesRef.current.length > 0) terrain.mapImages = mapImagesRef.current
     await supabase
       .from('scene')
       .update({ terrain, bg_color: bgColorRef.current })
@@ -202,7 +208,7 @@ export function useSceneDB(
         .single()
       if (!scene) return
 
-      const terrain  = scene.terrain  as { layers?: string[]; bakedGround?: string; sceneState?: SceneState } | null
+      const terrain  = scene.terrain  as { layers?: string[]; bakedGround?: string; sceneState?: SceneState; mapImages?: PlacedImage[] } | null
       const objects  = scene.objects  as unknown[] | null
       const fog_mask = scene.fog_mask as string | null
 
@@ -211,6 +217,8 @@ export function useSceneDB(
         sceneStateRef.current = terrain.sceneState
         setLoadedSceneState(terrain.sceneState)
       }
+      mapImagesRef.current = terrain?.mapImages ?? []
+      setLoadedMapImages(terrain?.mapImages ?? [])
 
       if (terrain?.layers) {
         lastLayersRef.current = terrain.layers
@@ -258,9 +266,9 @@ export function useSceneDB(
     setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, name: trimmed } : s))
   }, [supabase])
 
-  const setBgColor = useCallback((c: string) => { bgColorRef.current = c }, [])
-
-  const setSceneState = useCallback((s: SceneState) => { sceneStateRef.current = s }, [])
+  const setBgColor    = useCallback((c: string)          => { bgColorRef.current = c }, [])
+  const setSceneState = useCallback((s: SceneState)      => { sceneStateRef.current = s }, [])
+  const setMapImages  = useCallback((imgs: PlacedImage[]) => { mapImagesRef.current = imgs }, [])
 
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -273,8 +281,8 @@ export function useSceneDB(
   }, [saveStateOnly])
 
   return {
-    save, scheduleSave, scheduleStateSave, sceneIdRef, setBgColor, setSceneState,
-    loadedSceneState, screenW, screenH,
+    save, scheduleSave, scheduleStateSave, sceneIdRef, setBgColor, setSceneState, setMapImages,
+    loadedSceneState, loadedMapImages, screenW, screenH,
     scenes, activeSceneId, switchScene, createScene, deleteScene, renameScene,
   }
 }
