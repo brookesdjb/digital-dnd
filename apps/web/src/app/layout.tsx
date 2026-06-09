@@ -22,7 +22,6 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const supabaseUrl = process.env.SUPABASE_URL ?? ''
   const supabaseKey = process.env.SUPABASE_ANON_KEY ?? ''
-  if (!supabaseUrl || !supabaseKey) throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY are required')
   return (
     <html lang="en" className={`${manrope.variable} ${spaceMono.variable}`}>
       <head>
