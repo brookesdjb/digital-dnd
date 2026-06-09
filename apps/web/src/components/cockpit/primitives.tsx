@@ -48,6 +48,7 @@ export const Icons: Record<string, IconFn> = {
   shadows:  p => <I {...p}><circle cx="9" cy="12" r="5" /><path d="M14.5 7.5a5 5 0 010 9" opacity="0.4" /></I>,
   image:    p => <I {...p}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></I>,
   upload:   p => <I {...p}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></I>,
+  sync:     p => <I {...p}><polyline points="1 4 1 10 7 10" /><polyline points="23 20 23 14 17 14" /><path d="M3.5 9a9 9 0 0114.8-2.8L23 10" /><path d="M1 14l4.7 4.8A9 9 0 0020.5 15" /></I>,
 }
 
 // ── Slider ───────────────────────────────────────────────────────────────────

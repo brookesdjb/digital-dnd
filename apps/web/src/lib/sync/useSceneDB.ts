@@ -270,6 +270,12 @@ export function useSceneDB(
   const setSceneState = useCallback((s: SceneState)      => { sceneStateRef.current = s }, [])
   const setMapImages  = useCallback((imgs: PlacedImage[]) => { mapImagesRef.current = imgs }, [])
 
+  const updateScreenDims = useCallback(async (w: number, h: number) => {
+    await supabase.from('table_config').update({ screen_w_in: w, screen_h_in: h }).eq('id', tableId)
+    setScreenW(w)
+    setScreenH(h)
+  }, [supabase, tableId])
+
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(save, DEBOUNCE_MS)
@@ -282,7 +288,7 @@ export function useSceneDB(
 
   return {
     save, scheduleSave, scheduleStateSave, sceneIdRef, setBgColor, setSceneState, setMapImages,
-    loadedSceneState, loadedMapImages, screenW, screenH,
+    loadedSceneState, loadedMapImages, screenW, screenH, updateScreenDims,
     scenes, activeSceneId, switchScene, createScene, deleteScene, renameScene,
   }
 }

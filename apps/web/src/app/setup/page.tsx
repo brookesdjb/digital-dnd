@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { createClient } from '@/lib/supabase/client'
+import { SCREEN_SIZES as BATTLE_SIZES, SCREEN_SIZE_LABELS } from '@/components/scene/BattleGrid'
 
 const SCREEN_SIZES = [
-  { label: '55" TV (48.5 × 27.3")', w: 48.5, h: 27.3 },
-  { label: '65" TV (56.7 × 31.9")', w: 56.7, h: 31.9 },
-  { label: '75" TV (65.4 × 36.8")', w: 65.4, h: 36.8 },
-  { label: '11" iPad Pro (9.7 × 7.0")', w: 9.7, h: 7.0 },
-  { label: '12.9" iPad Pro (10.9 × 8.2")', w: 10.9, h: 8.2 },
+  ...SCREEN_SIZE_LABELS.map(label => ({
+    label: `${label} (${BATTLE_SIZES[label].w} × ${BATTLE_SIZES[label].h}")`,
+    w: BATTLE_SIZES[label].w,
+    h: BATTLE_SIZES[label].h,
+  })),
   { label: 'Custom', w: 0, h: 0 },
 ]
 

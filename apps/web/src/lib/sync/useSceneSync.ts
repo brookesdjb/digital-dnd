@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { FogIO } from '@/components/scene/FogLayer'
@@ -10,7 +10,7 @@ export function useSceneSync(
   groundIO: React.RefObject<GroundIO | undefined>,
   fogIO: React.RefObject<FogIO | undefined>,
 ) {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const [objects,        setObjects]        = useState<PlacedObject[]>([])
   const [screenW,        setScreenW]        = useState(48.5)
   const [screenH,        setScreenH]        = useState(27.3)
@@ -39,6 +39,10 @@ export function useSceneSync(
   const [fowDisplayOpacity, setFowDisplayOpacity] = useState(0.92)
   const [bakedGround,       setBakedGround]       = useState<string | null>(null)
   const [mapImages,         setMapImages]         = useState<PlacedImage[]>([])
+  const [isPaused,          setIsPaused]          = useState(false)
+  const [isConnected,       setIsConnected]       = useState(false)
+  const [reconnectKey,      setReconnectKey]      = useState(0)
+
   // Pending buffers handle the race where a Realtime message arrives before ioRefs mount.
   const pendingTerrain = useRef<string[] | null>(null)
   const pendingFogMask = useRef<string | null>(null)
@@ -70,23 +74,39 @@ export function useSceneSync(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Initial DB load
+  // Apply buffered data that arrived before ioRefs were ready (runs every render, cheap check)
+  useEffect(() => {
+    if (!pendingTerrain.current || !groundIO.current) return
+    const layers = pendingTerrain.current
+    pendingTerrain.current = null
+    groundIO.current.load(layers)
+  })
+
+  useEffect(() => {
+    if (!pendingFogMask.current || !fogIO.current) return
+    const mask = pendingFogMask.current
+    pendingFogMask.current = null
+    fogIO.current.load(mask)
+  })
+
+  // Combined DB load + Realtime subscription. Re-runs on reconnect (reconnectKey increments).
   useEffect(() => {
     let cancelled = false
-    async function load() {
-      // Two separate queries to avoid the ambiguous FK between table_config and scene.
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    // Tracks whether SUBSCRIBED has fired once in this effect run (for auto-recovery detection).
+    const hasPreviouslySubscribed = { value: false }
+
+    async function loadScene() {
       const { data: table, error: tableError } = await supabase
         .from('table_config')
         .select('id, active_scene_id, screen_w_in, screen_h_in')
         .eq('id', tableId)
         .single()
-
       if (tableError) console.error('useSceneSync: table_config fetch', tableError)
       if (cancelled || !table) return
 
       setScreenW(Number(table.screen_w_in))
       setScreenH(Number(table.screen_h_in))
-
       if (!table.active_scene_id) return
 
       const { data: scene, error: sceneError } = await supabase
@@ -94,7 +114,6 @@ export function useSceneSync(
         .select('id, terrain, objects, bg_color, weather, fog_mask')
         .eq('id', table.active_scene_id)
         .single()
-
       if (sceneError) console.error('useSceneSync: scene fetch', sceneError)
       if (cancelled || !scene) return
 
@@ -121,37 +140,23 @@ export function useSceneSync(
       }
       if (objs) setObjects(objs)
       if (scene.bg_color) setBgColor(scene.bg_color)
-      remoteLog('display', 'DB_LOAD', { sceneId: scene.id, objects: objs?.length ?? 0, hasTerrain: !!terrain?.layers, hasFog: !!fogMask })
+      remoteLog('display', 'DB_LOAD', {
+        sceneId: scene.id,
+        reconnect: reconnectKey > 0,
+        objects: objs?.length ?? 0,
+        hasTerrain: !!terrain?.layers,
+        hasFog: !!fogMask,
+      })
     }
-    load()
-    return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableId])
 
-  // Apply buffered data that arrived before ioRefs were ready (runs every render, cheap check)
-  useEffect(() => {
-    if (!pendingTerrain.current || !groundIO.current) return
-    const layers = pendingTerrain.current
-    pendingTerrain.current = null
-    groundIO.current.load(layers)
-  })
+    loadScene()
 
-  useEffect(() => {
-    if (!pendingFogMask.current || !fogIO.current) return
-    const mask = pendingFogMask.current
-    pendingFogMask.current = null
-    fogIO.current.load(mask)
-  })
-
-  // Realtime subscription
-  useEffect(() => {
     const ch = supabase.channel(`table:${tableId}`)
     ch
       .on('broadcast', { event: 'SCENE_ACTIVATE' }, async ({ payload }) => {
         const { sceneId } = payload as { sceneId: string }
         remoteLog('display', '← SCENE_ACTIVATE', { sceneId })
 
-        // Clear current 3D state immediately
         if (groundIO.current) await groundIO.current.load([])
         if (fogIO.current) fogIO.current.clear()
         setObjects([])
@@ -214,6 +219,17 @@ export function useSceneSync(
         remoteLog('display', '← OBJECTS_UPDATED', { count: objects.length })
         setObjects(objects)
       })
+      .on('broadcast', { event: 'PAUSE_TOGGLE' }, ({ payload }) => {
+        const { isPaused } = payload as { isPaused: boolean }
+        remoteLog('display', '← PAUSE_TOGGLE', { isPaused })
+        setIsPaused(isPaused)
+      })
+      .on('broadcast', { event: 'SCREEN_UPDATED' }, ({ payload }) => {
+        const { screenW: w, screenH: h } = payload as { screenW: number; screenH: number }
+        remoteLog('display', '← SCREEN_UPDATED', { screenW: w, screenH: h })
+        setScreenW(w)
+        setScreenH(h)
+      })
       .on('broadcast', { event: 'STATE_UPDATED' }, ({ payload }) => {
         remoteLog('display', '← STATE_UPDATED', payload as Record<string, unknown>)
         const p = payload as Record<string, unknown>
@@ -236,19 +252,42 @@ export function useSceneSync(
         if (p.aoIntensity    !== undefined) setAoIntensity(p.aoIntensity    as number)
         if (p.blobSize       !== undefined) setBlobSize(p.blobSize       as number)
         if (p.blobOpacity    !== undefined) setBlobOpacity(p.blobOpacity    as number)
-        if (p.windSpeed          !== undefined) setWindSpeed(p.windSpeed          as number)
-        if (p.windStrength       !== undefined) setWindStrength(p.windStrength       as number)
-        if (p.fowColor           !== undefined) setFowColor(p.fowColor           as string)
-        if (p.fowDisplayOpacity  !== undefined) setFowDisplayOpacity(p.fowDisplayOpacity  as number)
+        if (p.windSpeed         !== undefined) setWindSpeed(p.windSpeed         as number)
+        if (p.windStrength      !== undefined) setWindStrength(p.windStrength      as number)
+        if (p.fowColor          !== undefined) setFowColor(p.fowColor          as string)
+        if (p.fowDisplayOpacity !== undefined) setFowDisplayOpacity(p.fowDisplayOpacity as number)
       })
-      .subscribe()
+      .subscribe((status) => {
+        if (cancelled) return
+        if (status === 'SUBSCRIBED') {
+          setIsConnected(true)
+          if (hasPreviouslySubscribed.value) {
+            // Supabase auto-recovered: re-fetch DB to catch up on any missed messages.
+            void loadScene()
+          }
+          hasPreviouslySubscribed.value = true
+          if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setIsConnected(false)
+          // Exponential backoff: 1s, 2s, 4s, 8s, … capped at 30s
+          const delay = Math.min(1000 * Math.pow(2, reconnectKey), 30000)
+          remoteLog('display', 'RECONNECT_SCHEDULED', { delay, attempt: reconnectKey + 1 })
+          retryTimer = setTimeout(() => {
+            if (!cancelled) setReconnectKey(k => k + 1)
+          }, delay)
+        }
+      })
 
-    return () => void supabase.removeChannel(ch)
+    return () => {
+      cancelled = true
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
+      void supabase.removeChannel(ch)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableId])
+  }, [tableId, reconnectKey])
 
   return {
-    objects, screenW, screenH,
+    objects, screenW, screenH, isPaused,
     bgColor, rainIntensity, showGrid,
     hemSkyColor, hemGroundColor, hemIntensity,
     sunColor, sunIntensity, sunAzimuth, sunElevation,
@@ -257,5 +296,6 @@ export function useSceneSync(
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
     bakedGround, mapImages,
+    isConnected,
   }
 }

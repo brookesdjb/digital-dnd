@@ -91,11 +91,13 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     setMapImages: setMapImagesRef,
     loadedSceneState, loadedMapImages, screenW: dbScreenW, screenH: dbScreenH,
     scenes, activeSceneId, switchScene, createScene, deleteScene, renameScene,
+    updateScreenDims,
   } = useSceneDB(tableId, groundIO, objectsIO, fogIO)
 
   const {
     schedulePublishTerrain, schedulePublishObjects, schedulePublishState,
     schedulePublishFog, schedulePublishImages, publishSceneActivate,
+    publishPause, publishScreenDims, publishFullSync,
   } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO, fogIO)
 
   const { assets, loading: assetsLoading, fetchAssets, uploadAsset } = useAssets(tableId)
@@ -269,6 +271,14 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     c.setView({ grid: loadedSceneState.showGrid })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedSceneState])
+
+  // Publish pause state immediately when it changes
+  useEffect(() => { publishPause(c.paused) }, [c.paused, publishPause])
+
+  const handleSetScreenDims = useCallback(async (w: number, h: number) => {
+    await updateScreenDims(w, h)
+    publishScreenDims(w, h)
+  }, [updateScreenDims, publishScreenDims])
 
   // Shadow baking
   const objectPaintMode = c.tool === 'object'
@@ -451,12 +461,16 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
           onFogClearAll:     () => { fogIO.current?.clear?.(); onFogChange() },
           onObjectsUndo:     () => { objectsIO.current?.undo?.();     onObjectsChange() },
           onObjectsClearAll: () => { objectsIO.current?.clearAll?.(); onObjectsChange() },
+          onForceSync:       () => { void publishFullSync() },
           onRecenter: () => {
             if (controlsRef.current) {
               controlsRef.current.target.set(0, 0, 0)
               controlsRef.current.update()
             }
           },
+          dbScreenW,
+          dbScreenH,
+          onSetScreenDims: handleSetScreenDims,
           assets,
           assetsLoading,
           mapImages,

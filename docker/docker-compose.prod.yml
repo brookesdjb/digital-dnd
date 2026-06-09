@@ -1,0 +1,12 @@
+# Production override — pulls pre-built image from GHCR instead of building locally.
+#
+# Usage (from the docker/ directory):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull web
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Pin a specific release:
+#   TAG=v1.2.3 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  web:
+    image: ghcr.io/brookesdjb/digital-dnd:${TAG:-latest}

@@ -118,11 +118,53 @@ export function useScenePublish(
     ch.send({ type: 'broadcast', event: 'SCENE_ACTIVATE', payload: { sceneId: newSceneId } })
   }, [])
 
+  const publishPause = useCallback((isPaused: boolean) => {
+    const ch = channelRef.current
+    if (!ch) return
+    remoteLog('control', '→ PAUSE_TOGGLE', { isPaused })
+    ch.send({ type: 'broadcast', event: 'PAUSE_TOGGLE', payload: { isPaused } })
+  }, [])
+
+  const publishScreenDims = useCallback((screenW: number, screenH: number) => {
+    const ch = channelRef.current
+    if (!ch) return
+    remoteLog('control', '→ SCREEN_UPDATED', { screenW, screenH })
+    ch.send({ type: 'broadcast', event: 'SCREEN_UPDATED', payload: { screenW, screenH } })
+  }, [])
+
+  // Broadcasts all current state to recover a display that has drifted.
+  const publishFullSync = useCallback(async () => {
+    const sceneId = sceneIdRef.current
+    const ch = channelRef.current
+    if (!sceneId || !ch) return
+    remoteLog('control', '→ FORCE_FULL_SYNC', { sceneId })
+
+    const layers = await groundIO.current?.save()
+    if (layers) {
+      ch.send({ type: 'broadcast', event: 'TERRAIN_UPDATED', payload: { sceneId, terrain: { layers } } })
+    }
+
+    const objects = objectsIO.current?.save() ?? []
+    ch.send({ type: 'broadcast', event: 'OBJECTS_UPDATED', payload: { sceneId, objects } })
+
+    if (fogIO.current) {
+      const fogMask = await fogIO.current.save()
+      ch.send({ type: 'broadcast', event: 'FOG_UPDATED', payload: { sceneId, fogMask } })
+    }
+
+    const images = latestImages.current
+    if (images.length > 0) {
+      ch.send({ type: 'broadcast', event: 'IMAGES_UPDATED', payload: { sceneId, images } })
+    }
+
+    publishState()
+  }, [sceneIdRef, groundIO, objectsIO, fogIO, publishState])
+
   // Re-broadcast state every 8s so displays that connect after the initial publish catch up.
   useEffect(() => {
     const id = setInterval(publishState, 8000)
     return () => clearInterval(id)
   }, [publishState])
 
-  return { schedulePublishTerrain, schedulePublishObjects, schedulePublishState, schedulePublishFog, schedulePublishImages, publishSceneActivate }
+  return { schedulePublishTerrain, schedulePublishObjects, schedulePublishState, schedulePublishFog, schedulePublishImages, publishSceneActivate, publishPause, publishScreenDims, publishFullSync }
 }

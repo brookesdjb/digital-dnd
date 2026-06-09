@@ -321,7 +321,7 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 - [x] Replace local JSON save/load with DB read/write
 - [x] `docker-compose.yml`: Supabase stack (postgres, PostgREST, Realtime, nginx) + Next.js container
 - [ ] `/setup`: list existing sessions per user — deferred to M4 with scene list UI
-- [ ] Supabase Storage: map image upload — deferred to M4 (needed for base map feature)
+- [x] Supabase Storage: map image upload — implemented in M4 via `useAssets` + `map-assets` bucket
 
 ---
 
@@ -351,23 +351,23 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 
 **Goal:** feature parity with the spec's Milestone 1 feature set.
 
-- [ ] **Base map image**: upload PNG/JPG, set as ground texture; scale/offset/rotation controls
+- [x] **Base map image**: `MapImages.tsx` — upload PNG/JPG/WebP to Supabase Storage, place on ground plane with edge-fade shader, drag to reposition, scale/rotation/fade controls; syncs via `IMAGES_UPDATED`; persists to `terrain.mapImages` in DB
 - [x] **Fog of War**: `FogLayer.tsx` using DataTexture mask; brush + rect-select tools; DM vs player opacity; syncs in real-time via `FOG_UPDATED`; persists to `fog_mask` DB column
 - [x] **Object snap-to-grid**: toggle in Object Painting panel; snaps placed object positions and cursor to nearest integer grid cell
 - [x] **Scene list**: `SceneList.tsx` overlay panel (top-left); click to switch, double-click to rename, × to delete, + New Scene
 - [x] **Multi-scene management**: add, delete, rename; `switchScene` saves current, clears 3D state, loads new scene via ioRefs; `active_scene_id` updated in DB
-- [ ] **Pause screen**: control client toggles; display shows configurable overlay image
-- [ ] **Display calibration UI**: set physical screen dimensions in setup/table settings
+- [x] **Pause screen**: `c.paused` / `c.setPaused` in cockpit; publishes `PAUSE_TOGGLE` via `useScenePublish`; `useSceneSync` handles it; display shows full black overlay when paused
+- [x] **Display calibration UI**: View panel — "Display calibration" section with W/H inputs and "Update display screen" button; persists to `table_config` via `useSceneDB.updateScreenDims`; broadcasts `SCREEN_UPDATED` so display repositions camera immediately
 
 ---
 
-### Milestone 5 — Polish + LAN Deployment Docs
+### Milestone 5 — Polish + LAN Deployment Docs ✅
 
-- [ ] Auto-reconnect on display client with exponential backoff; "Waiting for GM" overlay
-- [ ] Docker Compose documented and tested on NAS
-- [ ] Pi kiosk setup guide (Chromium `--kiosk --app=http://NAS_IP:3000/display/TABLE_ID`)
-- [ ] Environment variable reference doc
-- [ ] `FORCE_FULL_SYNC` button in control client UI for manual drift recovery
+- [x] Auto-reconnect on display client with exponential backoff; "Waiting for GM" overlay
+- [x] Docker Compose documented and tested on NAS
+- [x] Pi kiosk setup guide (Chromium `--kiosk --app=http://NAS_IP:3000/display/TABLE_ID`)
+- [x] Environment variable reference doc
+- [x] `FORCE_FULL_SYNC` button in control client UI for manual drift recovery
 
 ---
 

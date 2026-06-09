@@ -28,6 +28,11 @@ export interface PanelActions {
   onObjectsUndo:      () => void
   onObjectsClearAll:  () => void
   onRecenter:         () => void
+  onForceSync:        () => void
+  // Display calibration
+  dbScreenW:         number
+  dbScreenH:         number
+  onSetScreenDims:   (w: number, h: number) => void
   // Image library
   assets:            AssetRecord[]
   assetsLoading:     boolean
@@ -251,6 +256,9 @@ export function WeatherControls({ c }: { c: CockpitState }) {
 
 export function ViewControls({ c, actions }: { c: CockpitState; actions: PanelActions }) {
   const { view, setView } = c
+  const [calibW, setCalibW] = useState(String(Math.round(actions.dbScreenW * 10) / 10))
+  const [calibH, setCalibH] = useState(String(Math.round(actions.dbScreenH * 10) / 10))
+
   return (
     <div className="ck-stack">
       <Toggle label="Battle grid" sub="Calibrated 1″ squares"
@@ -260,7 +268,7 @@ export function ViewControls({ c, actions }: { c: CockpitState; actions: PanelAc
       <Slider label="Field of view" value={view.fov} min={16} max={60} step={1}
         onChange={v => setView({ fov: v })} fmt={v => v + '°'} />
       <div className="ck-field">
-        <span className="ck-field-label">Screen size</span>
+        <span className="ck-field-label">Preview size</span>
         <select className="ck-select" value={view.screenSize}
           onChange={e => setView({ screenSize: e.target.value })}
           style={{ width: 'auto' }}>
@@ -268,6 +276,25 @@ export function ViewControls({ c, actions }: { c: CockpitState; actions: PanelAc
         </select>
       </div>
       <Btn variant="ghost" full icon={Icons.recenter} onClick={actions.onRecenter}>Re-center camera</Btn>
+      <span className="ck-sub-head">Display calibration</span>
+      <div className="ck-split">
+        <div className="ck-field">
+          <span className="ck-field-label">Width (in)</span>
+          <input className="ck-input-sm" type="number" min="1" max="200" step="0.1"
+            value={calibW} onChange={e => setCalibW(e.target.value)} />
+        </div>
+        <div className="ck-field">
+          <span className="ck-field-label">Height (in)</span>
+          <input className="ck-input-sm" type="number" min="1" max="200" step="0.1"
+            value={calibH} onChange={e => setCalibH(e.target.value)} />
+        </div>
+      </div>
+      <Btn variant="solid" full icon={Icons.recenter} onClick={() => {
+        const w = parseFloat(calibW), h = parseFloat(calibH)
+        if (w > 0 && h > 0) actions.onSetScreenDims(w, h)
+      }}>Update display screen</Btn>
+      <span className="ck-sub-head">Sync</span>
+      <Btn variant="ghost" full icon={Icons.sync} onClick={actions.onForceSync}>Force display sync</Btn>
     </div>
   )
 }

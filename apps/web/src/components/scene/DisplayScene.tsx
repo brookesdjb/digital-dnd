@@ -32,7 +32,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
   const lightRef = useRef<DirectionalLight>(null)
   const showPerf = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('perf')
   const {
-    objects, screenW, screenH,
+    objects, screenW, screenH, isPaused,
     bgColor, rainIntensity, showGrid,
     hemSkyColor, hemGroundColor, hemIntensity,
     sunColor, sunIntensity, sunAzimuth, sunElevation,
@@ -41,6 +41,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
     bakedGround, mapImages,
+    isConnected,
   } = useSceneSync(tableId, groundIO, fogIO)
 
   const fieldSize = Math.ceil(Math.max(screenW, screenH)) + 8
@@ -69,7 +70,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
   const shadowHalf = fieldSize / 2
 
   return (
-    <div style={{ width: '100%', height: '100%', background: bgColor }}>
+    <div style={{ width: '100%', height: '100%', background: bgColor, position: 'relative' }}>
       <Canvas
         shadows
         camera={{ position: [0, initH, 0.001], fov: DEFAULT_FOV, near: 0.1, far: 300 }}
@@ -156,6 +157,29 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
         )}
       </Canvas>
       {showPerf && <PerformanceOverlay />}
+      {isPaused && (
+        <div style={{
+          position: 'absolute', inset: 0, background: '#000', zIndex: 10,
+        }} />
+      )}
+      {!isConnected && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(0,0,0,0.85)',
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'rgba(255,255,255,0.35)',
+          fontFamily: '"SF Mono", Consolas, monospace',
+          fontSize: '13px',
+          letterSpacing: '0.15em',
+          textTransform: 'uppercase',
+          userSelect: 'none',
+        }}>
+          Waiting for GM
+        </div>
+      )}
     </div>
   )
 }
