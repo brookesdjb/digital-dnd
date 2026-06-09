@@ -10,9 +10,10 @@ interface Props {
   showBlobs?: boolean
   blobSize?: number
   blobOpacity?: number
+  castShadow?: boolean
 }
 
-export function PlacedObjectsRenderer({ objects, showBlobs = true, blobSize = 1.0, blobOpacity = 1.0 }: Props) {
+export function PlacedObjectsRenderer({ objects, showBlobs = true, blobSize = 1.0, blobOpacity = 1.0, castShadow = false }: Props) {
   const blobRef = useRef<THREE.InstancedMesh>(null)
 
   useEffect(() => { BLOB_MAT.opacity = blobOpacity }, [blobOpacity])
@@ -50,7 +51,7 @@ export function PlacedObjectsRenderer({ objects, showBlobs = true, blobSize = 1.
       />
       {grouped.map(([path, list]) => (
         <Suspense key={path} fallback={null}>
-          <InstancedPlacedAsset path={path} instances={list} castShadow={false} />
+          <InstancedPlacedAsset path={path} instances={list} castShadow={castShadow} />
         </Suspense>
       ))}
     </>

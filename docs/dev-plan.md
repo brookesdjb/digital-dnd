@@ -335,6 +335,11 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 - [x] Terrain paint sync: `TERRAIN_UPDATED` broadcast
 - [x] Placed objects sync: `OBJECTS_UPDATED` broadcast
 - [x] DisplayScene: rewritten — camera from screen dims in DB, PlacedObjectsRenderer for read-only objects
+- [x] Lighting sync: hemisphere colors/intensity, sun color/intensity/azimuth/elevation — all synced via `STATE_UPDATED`
+- [x] Shadow mode sync: Blob / Soft Shadows / SSAO / combined — display mirrors control exactly
+- [x] Fog sync: enabled flag, color, density — display matches control
+- [x] Wind sync: speed and strength broadcast to display
+- [x] Blob size/opacity sync
 - [ ] Fog of War sync — deferred to M4 (FogLayer not built yet)
 - [ ] Scene activate sync — deferred to M4 (scene list not built yet)
 - [ ] Pause/resume sync — deferred to M4 (pause feature not built yet)
@@ -373,6 +378,41 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 - [ ] Vercel deployment for Next.js app
 - [ ] Multi-table support (already in data model; just needs auth isolation)
 - [ ] Stripe integration for subscription model (optional)
+
+---
+
+## Developer Tooling
+
+### Log forwarding (`/api/log`) ✅
+A POST endpoint that writes structured client-side log entries to the Next.js server stdout. Both control and display hooks call `remoteLog(source, event, data)` at key sync points — state published, terrain published, objects published, and all three received. All logs land in the single `npm run dev` terminal with `[HH:MM:SS.mmm] [source] EVENT {data}` format.
+
+### Channel monitor (`/debug/[tableId]`) ✅
+A dev-only page that subscribes to the Supabase Realtime channel and renders a live scrolling log of every broadcast event with timestamps and summarized payloads (base64 blobs redacted). Color-coded by event type. Useful for verifying sync round-trips without needing the 3D scene to look correct in a screenshot.
+
+### Playwright test suite (planned)
+
+**Goal:** fast, reliable CI coverage of sync and rendering without manual browser inspection.
+
+**Approach:** tests run against a real local Supabase stack (`supabase start`). No mocking of the Realtime channel — tests exercise the real broadcast path.
+
+**Planned test cases:**
+
+| Test | What it verifies |
+|---|---|
+| Control page smoke | `/control/[tableId]` loads, canvas renders, no JS errors |
+| Display page smoke | `/display/[tableId]` loads, canvas renders, no JS errors |
+| Debug page connects | `/debug/[tableId]` shows `● connected` within 3s |
+| State sync round-trip | Control broadcasts STATE_UPDATED; debug page receives it within 2s |
+| Terrain sync round-trip | Control paint stroke triggers TERRAIN_UPDATED; debug page receives it |
+| Objects sync round-trip | Control places an object; OBJECTS_UPDATED appears in debug page log |
+| bgColor sync | Control changes bg color; display `<div>` background style updates |
+| Grid sync | Control toggles grid; `showGrid` field appears in debug log |
+
+**Implementation notes:**
+- Use `@playwright/test` with `webServer` config pointing at `npm run dev`
+- The debug page is the assertion surface for sync tests — poll for expected event text in the log entries rather than inspecting 3D canvas state
+- Screenshot control and display pages for visual regression baseline
+- Supabase must be running locally; skip sync tests with `test.skip` if `SUPABASE_URL` env is absent
 
 ---
 

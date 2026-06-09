@@ -19,11 +19,12 @@ A top-down 3D battle map scene for tabletop gaming, built with React Three Fiber
 
 ```bash
 npm run dev      # start Next.js dev server (Turbopack, hot reload) — always use run_in_background: true
-npm run build    # production build
-npm run lint     # ESLint
+npm run lint     # ESLint + type check
 ```
 
 All commands run from the repo root and delegate to `apps/web` via npm workspaces.
+
+**CRITICAL: Never run `npm run build` while the dev server is running.** The production build uses webpack and writes to `.next/`; the Turbopack dev server uses the same directory with an incompatible format. Running both leaves a corrupted cache that causes Internal Server Error on every route. Fix: kill all dev servers, `rm -rf apps/web/.next`, restart. Use `npm run lint` for type checking instead of build.
 
 ## Monorepo Structure
 
@@ -33,17 +34,24 @@ apps/web/                         # Next.js app (TypeScript)
     app/
       control/[tableId]/page.tsx  # DM view — full scene + leva panels
       display/[tableId]/page.tsx  # TV view — scene only, no controls
+      debug/[tableId]/page.tsx    # Dev tool — live channel monitor (broadcast log)
       setup/page.tsx              # table creation (M1: local UUID; M2: Supabase)
+      api/log/route.ts            # POST endpoint — forwards client logs to server stdout
     components/scene/
       ControlScene.tsx            # Root for control route — leva panels, lighting, save/load
-      DisplayScene.tsx            # Root for display route — read-only, no leva
+      DisplayScene.tsx            # Root for display route — fully driven by useSceneSync
       Ground.tsx                  # Grass base + paintable road texture overlays
       Scatter.tsx                 # Auto-seeded KayKit vegetation + wind shader + InstancedModel
       ObjectPainter.tsx           # 3D object painting tool — click/drag to place models
+      PlacedObjectsRenderer.tsx   # Read-only instanced renderer for display route
       BattleGrid.tsx              # Overlay grid scaled to physical screen size
       Rain.tsx                    # Particle rain streaks + ground ripple effect
-    lib/sync/
-      useSceneSync.ts             # M1: stub. M3: Supabase Realtime subscription for display
+    lib/
+      log.ts                      # remoteLog(source, event, data) — fire-and-forget to /api/log
+      sync/
+        useSceneSync.ts           # Supabase Realtime subscription for display route
+        useScenePublish.ts        # Debounced broadcast publisher for control route
+        useSceneDB.ts             # Supabase DB read/write (persist + initial load)
   public/
     models/                       # GLTF/GLB model assets
     textures/                     # PBR texture assets
@@ -148,6 +156,24 @@ Masks are base64 PNG (grayscale, G-channel = painted alpha). Objects are loaded 
 - Dead trees: `defaultScale: 0.5`, `shadowType: 'dead'` (1.6×)
 - Bushes: `defaultScale: 1.0`, `shadowType: 'bush'` (1.1×)
 - Grass / flowers / rocks: `defaultScale: 1.0–1.1`, `shadowType: 'cover'` (0.65×)
+
+## Debugging & Dev Tooling
+
+### Log forwarding
+`lib/log.ts` exports `remoteLog(source, event, data)`. Call it anywhere client-side and the entry appears in the server terminal as `[HH:MM:SS.mmm] [source] EVENT {data}`. Both sync hooks (`useScenePublish`, `useSceneSync`) already call it at every broadcast send/receive.
+
+To capture ongoing server output: start the dev server with `npm run dev > /tmp/nextdev.log 2>&1 &` then read with `tail -f /tmp/nextdev.log`.
+
+### Channel monitor
+`/debug/[tableId]` — live browser page that subscribes to the Supabase channel and shows every broadcast event with timestamps, color-coded by type. Base64 blobs are redacted to `<blob ~Xkb>`. Useful for verifying sync round-trips. Add new event names to `BROADCAST_EVENTS` in the page when the protocol grows.
+
+### Sync architecture (what syncs where)
+`useScenePublish` debounces and broadcasts three event types:
+- `STATE_UPDATED` — all leva state: lighting, fog, shadows, wind, grid, rain, bgColor (200ms debounce, re-broadcast every 8s for late-joining displays)
+- `TERRAIN_UPDATED` — painted road texture masks (100ms debounce)
+- `OBJECTS_UPDATED` — placed 3D object list (100ms debounce)
+
+`useSceneSync` receives all three and updates React state. `DisplayScene` is fully driven by this state — no hardcoded values.
 
 ## Known Limitations / Gotchas
 

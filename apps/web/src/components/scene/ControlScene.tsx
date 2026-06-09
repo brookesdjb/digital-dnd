@@ -120,8 +120,23 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
 
   // Broadcast live scene-state changes to the display view
   useEffect(() => {
-    schedulePublishState({ showGrid, rainIntensity, bgColor })
-  }, [showGrid, rainIntensity, bgColor, schedulePublishState])
+    schedulePublishState({
+      showGrid, rainIntensity, bgColor,
+      hemSkyColor, hemGroundColor, hemIntensity,
+      sunColor, sunIntensity, sunAzimuth, sunElevation,
+      fogEnabled, fogColor, fogDensity,
+      shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
+      windSpeed, windStrength,
+    })
+  }, [
+    showGrid, rainIntensity, bgColor,
+    hemSkyColor, hemGroundColor, hemIntensity,
+    sunColor, sunIntensity, sunAzimuth, sunElevation,
+    fogEnabled, fogColor, fogDensity,
+    shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
+    windSpeed, windStrength,
+    schedulePublishState,
+  ])
 
   const screenDims = SCREEN_SIZES[screenSize]
   // fieldSize drives Scatter seeding and Rain — use DB dims so control matches display.

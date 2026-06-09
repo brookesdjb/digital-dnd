@@ -2,18 +2,37 @@ import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { PlacedObject } from '@dnd-table/types'
+import { remoteLog } from '@/lib/log'
 
 export function useSceneSync(
   tableId: string,
   groundIO: React.RefObject<GroundIO | undefined>,
 ) {
   const supabase = createClient()
-  const [objects,       setObjects]       = useState<PlacedObject[]>([])
-  const [screenW,       setScreenW]       = useState(48.5)
-  const [screenH,       setScreenH]       = useState(27.3)
-  const [bgColor,       setBgColor]       = useState('#6a8fa8')
-  const [rainIntensity, setRainIntensity] = useState(0)
-  const [showGrid,      setShowGrid]      = useState(false)
+  const [objects,        setObjects]        = useState<PlacedObject[]>([])
+  const [screenW,        setScreenW]        = useState(48.5)
+  const [screenH,        setScreenH]        = useState(27.3)
+  const [bgColor,        setBgColor]        = useState('#6a8fa8')
+  const [rainIntensity,  setRainIntensity]  = useState(0)
+  const [showGrid,       setShowGrid]       = useState(false)
+  const [hemSkyColor,    setHemSkyColor]    = useState('#87ceeb')
+  const [hemGroundColor, setHemGroundColor] = useState('#3d5a1e')
+  const [hemIntensity,   setHemIntensity]   = useState(1.5)
+  const [sunColor,       setSunColor]       = useState('#fff4e0')
+  const [sunIntensity,   setSunIntensity]   = useState(1.8)
+  const [sunAzimuth,     setSunAzimuth]     = useState(45)
+  const [sunElevation,   setSunElevation]   = useState(55)
+  const [fogEnabled,     setFogEnabled]     = useState(false)
+  const [fogColor,       setFogColor]       = useState('#adc4d4')
+  const [fogDensity,     setFogDensity]     = useState(0.012)
+  const [shadowMode,     setShadowMode]     = useState('Blob')
+  const [shadowRadius,   setShadowRadius]   = useState(8)
+  const [aoRadius,       setAoRadius]       = useState(1.5)
+  const [aoIntensity,    setAoIntensity]    = useState(5.0)
+  const [blobSize,       setBlobSize]       = useState(1.0)
+  const [blobOpacity,    setBlobOpacity]    = useState(1.0)
+  const [windSpeed,      setWindSpeed]      = useState(1.2)
+  const [windStrength,   setWindStrength]   = useState(1.0)
   // Pending terrain handles the race where a Realtime message arrives before groundIO mounts.
   const pendingTerrain = useRef<string[] | null>(null)
 
@@ -57,6 +76,7 @@ export function useSceneSync(
       }
       if (objs) setObjects(objs)
       if (scene.bg_color) setBgColor(scene.bg_color)
+      remoteLog('display', 'DB_LOAD', { sceneId: scene.id, objects: objs?.length ?? 0, hasTerrrain: !!terrain?.layers })
     }
     load()
     return () => { cancelled = true }
@@ -77,6 +97,7 @@ export function useSceneSync(
     ch
       .on('broadcast', { event: 'TERRAIN_UPDATED' }, async ({ payload }) => {
         const layers = (payload as { terrain: { layers: string[] } }).terrain.layers
+        remoteLog('display', '← TERRAIN_UPDATED', { layers: `${layers.length} layers` })
         if (groundIO.current) {
           await groundIO.current.load(layers)
         } else {
@@ -84,13 +105,34 @@ export function useSceneSync(
         }
       })
       .on('broadcast', { event: 'OBJECTS_UPDATED' }, ({ payload }) => {
-        setObjects((payload as { objects: PlacedObject[] }).objects)
+        const objects = (payload as { objects: PlacedObject[] }).objects
+        remoteLog('display', '← OBJECTS_UPDATED', { count: objects.length })
+        setObjects(objects)
       })
       .on('broadcast', { event: 'STATE_UPDATED' }, ({ payload }) => {
-        const p = payload as { showGrid?: boolean; rainIntensity?: number; bgColor?: string }
-        if (p.showGrid      !== undefined) setShowGrid(p.showGrid)
-        if (p.rainIntensity !== undefined) setRainIntensity(p.rainIntensity)
-        if (p.bgColor       !== undefined) setBgColor(p.bgColor)
+        remoteLog('display', '← STATE_UPDATED', payload as Record<string, unknown>)
+        const p = payload as Record<string, unknown>
+        if (p.showGrid      !== undefined) setShowGrid(p.showGrid      as boolean)
+        if (p.rainIntensity !== undefined) setRainIntensity(p.rainIntensity as number)
+        if (p.bgColor       !== undefined) setBgColor(p.bgColor       as string)
+        if (p.hemSkyColor    !== undefined) setHemSkyColor(p.hemSkyColor    as string)
+        if (p.hemGroundColor !== undefined) setHemGroundColor(p.hemGroundColor as string)
+        if (p.hemIntensity   !== undefined) setHemIntensity(p.hemIntensity   as number)
+        if (p.sunColor       !== undefined) setSunColor(p.sunColor       as string)
+        if (p.sunIntensity   !== undefined) setSunIntensity(p.sunIntensity   as number)
+        if (p.sunAzimuth     !== undefined) setSunAzimuth(p.sunAzimuth     as number)
+        if (p.sunElevation   !== undefined) setSunElevation(p.sunElevation   as number)
+        if (p.fogEnabled     !== undefined) setFogEnabled(p.fogEnabled     as boolean)
+        if (p.fogColor       !== undefined) setFogColor(p.fogColor       as string)
+        if (p.fogDensity     !== undefined) setFogDensity(p.fogDensity     as number)
+        if (p.shadowMode     !== undefined) setShadowMode(p.shadowMode     as string)
+        if (p.shadowRadius   !== undefined) setShadowRadius(p.shadowRadius   as number)
+        if (p.aoRadius       !== undefined) setAoRadius(p.aoRadius       as number)
+        if (p.aoIntensity    !== undefined) setAoIntensity(p.aoIntensity    as number)
+        if (p.blobSize       !== undefined) setBlobSize(p.blobSize       as number)
+        if (p.blobOpacity    !== undefined) setBlobOpacity(p.blobOpacity    as number)
+        if (p.windSpeed      !== undefined) setWindSpeed(p.windSpeed      as number)
+        if (p.windStrength   !== undefined) setWindStrength(p.windStrength   as number)
       })
       .subscribe()
 
@@ -98,5 +140,13 @@ export function useSceneSync(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableId])
 
-  return { objects, screenW, screenH, bgColor, rainIntensity, showGrid }
+  return {
+    objects, screenW, screenH,
+    bgColor, rainIntensity, showGrid,
+    hemSkyColor, hemGroundColor, hemIntensity,
+    sunColor, sunIntensity, sunAzimuth, sunElevation,
+    fogEnabled, fogColor, fogDensity,
+    shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
+    windSpeed, windStrength,
+  }
 }

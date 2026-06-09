@@ -3,6 +3,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { ObjectsIO } from '@/components/scene/ObjectPainter'
+import { remoteLog } from '@/lib/log'
 
 const TERRAIN_DEBOUNCE_MS = 100
 const OBJECTS_DEBOUNCE_MS = 100
@@ -12,6 +13,24 @@ export interface SceneState {
   showGrid:      boolean
   rainIntensity: number
   bgColor:       string
+  hemSkyColor:    string
+  hemGroundColor: string
+  hemIntensity:   number
+  sunColor:       string
+  sunIntensity:   number
+  sunAzimuth:     number
+  sunElevation:   number
+  fogEnabled:     boolean
+  fogColor:       string
+  fogDensity:     number
+  shadowMode:     string
+  shadowRadius:   number
+  aoRadius:       number
+  aoIntensity:    number
+  blobSize:       number
+  blobOpacity:    number
+  windSpeed:      number
+  windStrength:   number
 }
 
 export function useScenePublish(
@@ -40,6 +59,7 @@ export function useScenePublish(
     if (!sceneId || !ch) return
     const layers = await groundIO.current?.save()
     if (!layers) return
+    remoteLog('control', '→ TERRAIN_UPDATED', { sceneId, layers: `${layers.length} layers` })
     ch.send({ type: 'broadcast', event: 'TERRAIN_UPDATED', payload: { sceneId, terrain: { layers } } })
   }, [sceneIdRef, groundIO])
 
@@ -48,6 +68,7 @@ export function useScenePublish(
     const ch = channelRef.current
     if (!sceneId || !ch) return
     const objects = objectsIO.current?.save() ?? []
+    remoteLog('control', '→ OBJECTS_UPDATED', { sceneId, count: objects.length })
     ch.send({ type: 'broadcast', event: 'OBJECTS_UPDATED', payload: { sceneId, objects } })
   }, [sceneIdRef, objectsIO])
 
@@ -56,6 +77,7 @@ export function useScenePublish(
     const ch = channelRef.current
     const state = latestState.current
     if (!sceneId || !ch || !state) return
+    remoteLog('control', '→ STATE_UPDATED', { sceneId, ...state } as Record<string, unknown>)
     ch.send({ type: 'broadcast', event: 'STATE_UPDATED', payload: { sceneId, ...state } })
   }, [sceneIdRef])
 
