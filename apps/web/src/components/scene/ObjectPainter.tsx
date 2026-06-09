@@ -107,18 +107,16 @@ interface InstancedAssetProps {
 
 function InstancedRockAsset({ path, instances, castShadow }: InstancedAssetProps) {
   const { scene } = useGLTF(path) as GLTF
-  const [baseColor, normalMap, roughnessMap] = useTexture([
-    '/textures/rocks/basecolor.png',
-    '/textures/rocks/normal.png',
-    '/textures/rocks/roughness.png',
-  ])
+  const baseColor = useTexture('/textures/rocks/basecolor.png')
 
   const modifiedScene = useMemo(() => {
     const c   = scene.clone(true)
-    const mat = new THREE.MeshStandardMaterial({ map: baseColor, normalMap, roughnessMap })
+    // Lambert is faster to compile than Standard; normal map detail on rocks
+    // is still clearly visible from the top-down camera angle.
+    const mat = new THREE.MeshLambertMaterial({ map: baseColor })
     c.traverse(child => { if ((child as THREE.Mesh).isMesh) (child as THREE.Mesh).material = mat })
     return c
-  }, [scene, baseColor, normalMap, roughnessMap])
+  }, [scene, baseColor])
 
   return (
     <InstancedModel
@@ -130,7 +128,7 @@ function InstancedRockAsset({ path, instances, castShadow }: InstancedAssetProps
   )
 }
 
-const FOLIAGE_MAT = new THREE.MeshStandardMaterial({ color: 0x6fa33c, roughness: 0.5 })
+const FOLIAGE_MAT = new THREE.MeshLambertMaterial({ color: 0x6fa33c })
 
 function InstancedFoliageAsset({ path, instances, castShadow }: InstancedAssetProps) {
   const { scene } = useGLTF(path) as GLTF

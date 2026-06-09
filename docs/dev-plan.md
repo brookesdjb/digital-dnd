@@ -417,6 +417,101 @@ A dev-only page that subscribes to the Supabase Realtime channel and renders a l
 
 ---
 
+---
+
+## Milestone P — Performance
+
+### Root causes identified
+
+| Issue | Evidence | Impact |
+|---|---|---|
+| **All 12 road PBR texture sets loaded at mount** | `useTexture(ALL_ROAD_PATHS)` is unconditional — 36 textures × ~21MB GPU each = ~750MB unified memory spike | System grinds to halt; "memory leak" symptom |
+| **Shadow baking effect has missing dep** | `useEffect(..., [objectPaintMode])` — missing `useSoftShadows`. When the user turns on Soft Shadows, Three.js creates the shadow map with default `autoUpdate=true`; the baking effect never re-fires because `objectPaintMode` hasn't changed | Persistent ~30fps drop whenever Soft Shadows are on, even with a "static" scene |
+| **DisplayScene has no shadow baking at all** | No `lightRef`, no `autoUpdate=false` — shadow map re-renders every frame on the TV | Persistent GPU load on display even though nothing moves |
+| **2048×2048 shadow map + large frustum** | `shadowHalf = fieldSize/2` covers the whole ground; PCF sampling of a 2K map across the full screen every frame is expensive even when the map itself is static | ~10–15% persistent GPU overhead in main render pass |
+
+### Terrain baking system
+
+**Problem**: 36 PBR textures loaded on every scene load, consuming ~750MB unified memory.
+
+**Solution**: After painting, composite all layers into a single baked JPEG (2048×2048). The display route loads one texture instead of 36.
+
+**How the bake works:**
+1. Create a `WebGLRenderTarget` at 2048×2048
+2. Set up an orthographic camera looking straight down at the ground plane
+3. Render a temporary scene containing: the grass base (MeshBasicMaterial) + each painted overlay (MeshBasicMaterial + alphaMap = painted mask)
+4. Read back pixels with `gl.readRenderTargetPixels`, flip Y (WebGL bottom-to-top → Canvas top-to-bottom)
+5. Export as JPEG (≈200–400KB), store in `terrain.bakedGround` in the DB
+
+**Texture fidelity**: the source textures already have `.repeat` set (12× for grass, 20× for road overlays), so the bake naturally captures the tiling. Result is a single tileable composite — fine at TV-viewing distance.
+
+**Normal/roughness**: phase 1 uses a uniform `roughness: 0.75` on the baked plane. Phase 2 (future) can composite roughness maps using the same algorithm.
+
+**Workflow:**
+- Manual Save button → triggers bake → stores `bakedGround` in DB alongside masks
+- Auto-save (terrain paint debounce) → preserves existing `bakedGround`, does NOT re-bake (too slow)
+- Display route: on initial load or scene switch, if `terrain.bakedGround` is present, render `<BakedGround>` instead of `<Ground>` — skips loading all 36 PBR textures entirely
+- If display receives `TERRAIN_UPDATED` while in baked mode, the pending layers are buffered but not applied — display stays on the last baked state until DM saves again
+
+**Memory savings**: ~750MB → ~16MB on the display route (one 2K JPEG texture).
+
+### PerformanceHUD
+
+Enabled with `?perf=1` URL param. Two components:
+
+- `PerfSampler` — inside Canvas, uses `useFrame` + `useThree` to sample frame delta, draw calls, triangle count each frame. Writes to `window.__perfStats` for Playwright.
+- `PerformanceOverlay` — outside Canvas, rAF loop that reads `perfStats` and updates a fixed-position `<div>`. No React re-renders, no state.
+
+### Shadow fixes
+
+**ControlScene**: add `useSoftShadows` to the shadow baking effect deps. This ensures: when soft shadows are turned on, the effect fires, sees `objectPaintMode=false`, and immediately sets `autoUpdate=false` + `needsUpdate=true`.
+
+**DisplayScene**: add `lightRef` and a baking effect that sets `autoUpdate=false` and `needsUpdate=true` whenever `useSoftShadows`, `sunAzimuth`, or `sunElevation` changes.
+
+### Terrain bake lighting fix
+
+**Problem**: baked JPEG looked different from the live scene on the display.
+
+**Root cause**: `bakeGround()` used `MeshBasicMaterial` (flat albedo, no lighting) for the off-screen render, but `BakedGround.tsx` displayed the result with `MeshStandardMaterial` (which re-applied the scene's real-time hemisphere + directional lights on top of an already-unlit texture).
+
+**Fix**: `bakeGround()` now accepts a `BakeLighting` parameter (hemisphere colors/intensities + computed sun position) and creates matching `HemisphereLight` + `DirectionalLight` in the off-screen scene. All materials use `MeshStandardMaterial` so the bake captures the correct PBR response. `BakedGround.tsx` switches to `MeshBasicMaterial` — the lighting is already baked into the JPEG, no re-lighting needed.
+
+`ControlScene.handleSave` computes the `BakeLighting` params from the current cockpit state and passes them to `groundIO.current.bake(lighting)` before calling `dbSave`.
+
+### Terrain reload fix (ioRef race condition)
+
+**Problem**: reloading the control page lost all painted terrain (canvas went back to bare grass). Terrain on the display was unaffected.
+
+**Root cause**: `useSceneDB` called `groundIO.current.load(terrain.layers)` in the initial DB fetch. If `<Ground>` was still in Suspense at that moment, `groundIO.current` was `null` and the call was silently dropped.
+
+**Fix**: pending buffer pattern, same approach already used by `useSceneSync`. `pendingLayersRef` and `pendingFogRef` store the incoming data when the ioRefs aren't ready. Two empty-deps `useEffect`s run on every render: they check if both the pending data and the ioRef are now available, apply the data once, and clear the pending buffer.
+
+### Lighting persistence fix
+
+**Problem**: all lighting settings (hemisphere colors/intensities, sun azimuth/elevation/color/intensity, shadows, fog, wind, rain) were only transmitted via Realtime broadcast (`STATE_UPDATED`), never stored in the DB. On page refresh:
+- **Control route**: `useCockpit` resets to hardcoded DAY defaults — the user's custom lighting is gone.
+- **Display route**: `useSceneSync` starts from `useState` defaults and only recovers when the control route re-broadcasts (up to 8s, and only if control is open).
+
+**Fix**: `SceneState` is now a shared type in `packages/types/src/scene.ts`. It is stored inside `terrain.sceneState` in the DB (extending the existing JSONB blob — no migration required).
+
+Changes:
+- `useSceneDB.save()` always includes `sceneStateRef.current` in the terrain write. A new `setSceneState(s)` function updates the ref (no re-render).
+- `ControlScene` combines the broadcast effect and the new persist effect: any change to `c.light`, `c.shadows`, `c.weather`, `c.grass`, or `c.fog` now calls `schedulePublishState(state)` + `setSceneState(state)` + `scheduleSave()` in one effect.
+- `ControlScene` adds a `useEffect([loadedSceneState])` that restores cockpit controls to the DB-loaded values immediately on page load or scene switch, before the first frame renders.
+- `useSceneSync` reads `terrain.sceneState` on initial DB load and on `SCENE_ACTIVATE` and calls a stable `applySceneState()` helper — the display now has correct lighting on page load without waiting for any broadcast.
+
+The existing 8s re-broadcast from `useScenePublish` remains as a drift-correction fallback.
+
+### Future work (not yet implemented)
+
+- [ ] **Lazy texture loading**: only call `useTexture` for road layers that have non-empty masks. Reduces control-route memory from ~750MB to proportional to how many textures are actually painted.
+- [ ] **Reduce shadow map size**: test 1024×1024 — at TV viewing distance from above, 2048×2048 PCF overhead may not be worth the quality gain.
+- [ ] **`frameloop="demand"`**: since the scene is nearly static (only grass wind moves), switch from `frameloop="always"` to `frameloop="demand"` with `invalidate()` on wind ticks. Eliminates GPU load when idle.
+- [ ] **Baked ground real-time sync**: add `BAKED_TERRAIN_UPDATED` Realtime event so display updates immediately when DM saves, without needing a scene switch or page reload.
+- [ ] **Playwright profiling scripts**: `scripts/profile.mjs` — iterates preset matrix, reads `window.__perfStats` after warmup, outputs FPS comparison table.
+
+---
+
 ## Non-Functional Targets
 
 | Metric | Target |

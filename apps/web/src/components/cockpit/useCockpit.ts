@@ -141,11 +141,18 @@ export const LIGHT_PRESETS: LightPreset[] = [
 
 const DAY = LIGHT_PRESETS[1]
 
+export interface CockpitOverrides {
+  light?:   Partial<CockpitLight>
+  weather?: Partial<CockpitWeather>
+  shadows?: Partial<CockpitShadows>
+  grass?:   Partial<CockpitGrass>
+}
+
 function patch<T>(setter: React.Dispatch<React.SetStateAction<T>>) {
   return (upd: Partial<T>) => setter(s => ({ ...s, ...upd }))
 }
 
-export function useCockpit(): CockpitState {
+export function useCockpit(overrides?: CockpitOverrides): CockpitState {
   const [tool,    setTool]    = useState<CockpitTool>('select')
   const [paused,  setPaused]  = useState(false)
 
@@ -160,15 +167,16 @@ export function useCockpit(): CockpitState {
   const [road, _setRoad] = useState<CockpitRoad>({
     texture: ROAD_TEXTURE_LABELS[0], brush: 3, opacity: 1.0, erase: false,
   })
-  const [light, _setLight] = useState<CockpitLight>({ ...DAY, preset: DAY.id })
-  const [weather, _setWeather] = useState<CockpitWeather>({ rain: 1.0 })
-  const [grass,   _setGrass]   = useState<CockpitGrass>({ windSpeed: 1.2, windStrength: 1.0 })
+  const [light, _setLight] = useState<CockpitLight>({ ...DAY, preset: DAY.id, ...overrides?.light })
+  const [weather, _setWeather] = useState<CockpitWeather>({ rain: 1.0, ...overrides?.weather })
+  const [grass,   _setGrass]   = useState<CockpitGrass>({ windSpeed: 1.2, windStrength: 1.0, ...overrides?.grass })
   const [view, _setView] = useState<CockpitView>({
     grid: false, border: true, fov: 45,
     screenSize: SCREEN_SIZE_LABELS[0],
   })
   const [shadows, _setShadows] = useState<CockpitShadows>({
     mode: 'Blob', radius: 8, aoRadius: 1.5, aoIntensity: 5.0, blobSize: 1.0, blobOpacity: 1.0,
+    ...overrides?.shadows,
   })
 
   // Auto-snap scale when selected model changes

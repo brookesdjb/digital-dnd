@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { FogIO } from '@/components/scene/FogLayer'
-import type { PlacedObject } from '@dnd-table/types'
+import type { PlacedObject, SceneState } from '@dnd-table/types'
 import { remoteLog } from '@/lib/log'
 
 export function useSceneSync(
@@ -37,9 +37,37 @@ export function useSceneSync(
   const [windStrength,      setWindStrength]      = useState(1.0)
   const [fowColor,          setFowColor]          = useState('#0a0a1a')
   const [fowDisplayOpacity, setFowDisplayOpacity] = useState(0.92)
+  const [bakedGround,       setBakedGround]       = useState<string | null>(null)
   // Pending buffers handle the race where a Realtime message arrives before ioRefs mount.
   const pendingTerrain = useRef<string[] | null>(null)
   const pendingFogMask = useRef<string | null>(null)
+
+  const applySceneState = useCallback((s: SceneState) => {
+    setShowGrid(s.showGrid)
+    setRainIntensity(s.rainIntensity)
+    setBgColor(s.bgColor)
+    setHemSkyColor(s.hemSkyColor)
+    setHemGroundColor(s.hemGroundColor)
+    setHemIntensity(s.hemIntensity)
+    setSunColor(s.sunColor)
+    setSunIntensity(s.sunIntensity)
+    setSunAzimuth(s.sunAzimuth)
+    setSunElevation(s.sunElevation)
+    setFogEnabled(s.fogEnabled)
+    setFogColor(s.fogColor)
+    setFogDensity(s.fogDensity)
+    setShadowMode(s.shadowMode)
+    setShadowRadius(s.shadowRadius)
+    setAoRadius(s.aoRadius)
+    setAoIntensity(s.aoIntensity)
+    setBlobSize(s.blobSize)
+    setBlobOpacity(s.blobOpacity)
+    setWindSpeed(s.windSpeed)
+    setWindStrength(s.windStrength)
+    setFowColor(s.fowColor)
+    setFowDisplayOpacity(s.fowDisplayOpacity)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Initial DB load
   useEffect(() => {
@@ -69,10 +97,12 @@ export function useSceneSync(
       if (sceneError) console.error('useSceneSync: scene fetch', sceneError)
       if (cancelled || !scene) return
 
-      const terrain = scene.terrain as { layers?: string[] } | null
+      const terrain = scene.terrain as { layers?: string[]; bakedGround?: string; sceneState?: SceneState } | null
       const objs    = scene.objects as PlacedObject[] | null
       const fogMask = (scene as { fog_mask?: string | null }).fog_mask ?? null
 
+      if (terrain?.bakedGround) setBakedGround(terrain.bakedGround)
+      if (terrain?.sceneState) applySceneState(terrain.sceneState)
       if (terrain?.layers) {
         if (groundIO.current) {
           await groundIO.current.load(terrain.layers)
@@ -123,6 +153,7 @@ export function useSceneSync(
         if (groundIO.current) await groundIO.current.load([])
         if (fogIO.current) fogIO.current.clear()
         setObjects([])
+        setBakedGround(null)
         pendingTerrain.current = null
         pendingFogMask.current = null
 
@@ -133,10 +164,12 @@ export function useSceneSync(
           .single()
         if (!scene) return
 
-        const terrain  = scene.terrain  as { layers?: string[] } | null
+        const terrain  = scene.terrain  as { layers?: string[]; bakedGround?: string; sceneState?: SceneState } | null
         const objs     = scene.objects  as PlacedObject[] | null
         const fogMask  = (scene as { fog_mask?: string | null }).fog_mask ?? null
 
+        if (terrain?.bakedGround) setBakedGround(terrain.bakedGround)
+        if (terrain?.sceneState) applySceneState(terrain.sceneState)
         if (terrain?.layers) {
           if (groundIO.current) await groundIO.current.load(terrain.layers)
           else pendingTerrain.current = terrain.layers
@@ -214,5 +247,6 @@ export function useSceneSync(
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
+    bakedGround,
   }
 }

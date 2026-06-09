@@ -8,13 +8,15 @@ import type { GLTF } from 'three-stdlib'
 
 const BASE = '/models/kaykit/'
 
+// Reduced to 8 models (variants cut: BirchTree_2/3, MapleTree_2, DeadTree_2,
+// Bush_Large, Grass_Small, Flower_2_Clump) — visual diversity from random scale/rotation.
 const MODELS = [
-  'BirchTree_1','BirchTree_2','BirchTree_3',
-  'MapleTree_1','MapleTree_2',
-  'DeadTree_1','DeadTree_2',
-  'Bush','Bush_Large','Bush_Flowers',
-  'Grass_Large','Grass_Small',
-  'Flower_1_Clump','Flower_2_Clump',
+  'BirchTree_1',
+  'MapleTree_1',
+  'DeadTree_1',
+  'Bush','Bush_Flowers',
+  'Grass_Large',
+  'Flower_1_Clump',
 ]
 MODELS.forEach(m => useGLTF.preload(`${BASE}${m}.gltf`))
 
@@ -27,34 +29,45 @@ export const grassWindUniforms = {
   uWindStrength: { value: 1.0 },
 }
 
+// Single stable function reference — required for Three.js customProgramCacheKey
+// to deduplicate the wind program across all grass material instances.
+function windOnBeforeCompile(shader: THREE.WebGLProgramParametersWithUniforms) {
+  shader.uniforms.uTime         = grassWindUniforms.uTime
+  shader.uniforms.uWindSpeed    = grassWindUniforms.uWindSpeed
+  shader.uniforms.uWindStrength = grassWindUniforms.uWindStrength
+  shader.vertexShader =
+    `uniform float uTime;\nuniform float uWindSpeed;\nuniform float uWindStrength;\n`
+    + shader.vertexShader
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    /* glsl */`
+    #include <begin_vertex>
+    float windHeight = 1.0 - uv.y;
+    #ifdef USE_INSTANCING
+      vec3 wPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+    #else
+      vec3 wPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+    #endif
+    float wave = sin(uTime * uWindSpeed       + wPos.x * 1.9 + wPos.z * 1.3) * 0.20;
+    float gust = sin(uTime * uWindSpeed * 0.2 + wPos.x * 0.5               ) * 0.12;
+    transformed.x += (wave + gust) * windHeight * uWindStrength;
+    transformed.z += wave * 0.4   * windHeight * uWindStrength;
+    `
+  )
+}
+
 export function applyGrassWind(material: THREE.Material) {
-  const mat = material as THREE.Material & { _windApplied?: boolean; onBeforeCompile: (shader: THREE.WebGLProgramParametersWithUniforms) => void; needsUpdate: boolean }
+  const mat = material as THREE.Material & {
+    _windApplied?: boolean
+    onBeforeCompile: typeof windOnBeforeCompile
+    customProgramCacheKey: () => string
+    needsUpdate: boolean
+  }
   if (mat._windApplied) return
   mat._windApplied = true
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime         = grassWindUniforms.uTime
-    shader.uniforms.uWindSpeed    = grassWindUniforms.uWindSpeed
-    shader.uniforms.uWindStrength = grassWindUniforms.uWindStrength
-    shader.vertexShader =
-      `uniform float uTime;\nuniform float uWindSpeed;\nuniform float uWindStrength;\n`
-      + shader.vertexShader
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      /* glsl */`
-      #include <begin_vertex>
-      float windHeight = 1.0 - uv.y;
-      #ifdef USE_INSTANCING
-        vec3 wPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
-      #else
-        vec3 wPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-      #endif
-      float wave = sin(uTime * uWindSpeed       + wPos.x * 1.9 + wPos.z * 1.3) * 0.20;
-      float gust = sin(uTime * uWindSpeed * 0.2 + wPos.x * 0.5               ) * 0.12;
-      transformed.x += (wave + gust) * windHeight * uWindStrength;
-      transformed.z += wave * 0.4   * windHeight * uWindStrength;
-      `
-    )
-  }
+  mat.onBeforeCompile = windOnBeforeCompile
+  // Stable cache key — all wind-modified materials share one compiled GPU program.
+  mat.customProgramCacheKey = () => 'grass-wind-v1'
   mat.needsUpdate = true
 }
 
@@ -65,6 +78,29 @@ export function applyWindToGrassScene(scene: THREE.Object3D) {
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
     mats.forEach(mat => { if (mat.name === 'Grass') applyGrassWind(mat) })
   })
+}
+
+// ── vegetation material downgrade ────────────────────────────────────────────
+// MeshLambertMaterial compiles ~4× faster than MeshStandardMaterial on macOS Metal.
+// For a top-down view, the PBR→Phong quality difference is imperceptible on foliage.
+
+function toVegMaterial(src: THREE.Material): THREE.Material {
+  if (!(src instanceof THREE.MeshStandardMaterial)) return src
+  const lamb = new THREE.MeshLambertMaterial({
+    name:        src.name,
+    map:         src.map,
+    emissive:    src.emissive?.clone?.() ?? new THREE.Color(0, 0, 0),
+    emissiveMap: src.emissiveMap,
+    transparent: src.transparent,
+    alphaTest:   src.alphaTest,
+    opacity:     src.opacity,
+    side:        src.side,
+    depthWrite:  src.depthWrite,
+    blending:    src.blending,
+    color:       src.color?.clone?.() ?? new THREE.Color(1, 1, 1),
+  })
+  if (src.name === 'Grass') applyGrassWind(lamb as unknown as THREE.Material)
+  return lamb
 }
 
 // ── InstancedModel ────────────────────────────────────────────────────────────
@@ -109,6 +145,9 @@ export function InstancedModel({ scene, instances, castShadow, receiveShadow }: 
     s.traverse(child => {
       const mesh = child as THREE.Mesh
       if (mesh.isMesh) {
+        // Downgrade PBR to Lambert for all vegetation — faster shader compilation.
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        mesh.material = mats.length === 1 ? toVegMaterial(mats[0]) : mats.map(toVegMaterial)
         list.push({
           geometry: mesh.geometry,
           material: mesh.material,
@@ -242,25 +281,17 @@ export function Scatter({
   blobOpacity  = 1.0,
   fieldSize    = 27,
 }: ScatterProps) {
-  const { scene: b1 } = useGLTF(`${BASE}BirchTree_1.gltf`) as GLTF
-  const { scene: b2 } = useGLTF(`${BASE}BirchTree_2.gltf`) as GLTF
-  const { scene: b3 } = useGLTF(`${BASE}BirchTree_3.gltf`) as GLTF
-  const { scene: m1 } = useGLTF(`${BASE}MapleTree_1.gltf`) as GLTF
-  const { scene: m2 } = useGLTF(`${BASE}MapleTree_2.gltf`) as GLTF
-  const { scene: d1 } = useGLTF(`${BASE}DeadTree_1.gltf`) as GLTF
-  const { scene: d2 } = useGLTF(`${BASE}DeadTree_2.gltf`) as GLTF
-  const { scene: bs  } = useGLTF(`${BASE}Bush.gltf`) as GLTF
-  const { scene: bsl } = useGLTF(`${BASE}Bush_Large.gltf`) as GLTF
-  const { scene: bsf } = useGLTF(`${BASE}Bush_Flowers.gltf`) as GLTF
-  const { scene: gl  } = useGLTF(`${BASE}Grass_Large.gltf`) as GLTF
-  const { scene: gs  } = useGLTF(`${BASE}Grass_Small.gltf`) as GLTF
+  const { scene: b1  } = useGLTF(`${BASE}BirchTree_1.gltf`)   as GLTF
+  const { scene: m1  } = useGLTF(`${BASE}MapleTree_1.gltf`)   as GLTF
+  const { scene: d1  } = useGLTF(`${BASE}DeadTree_1.gltf`)    as GLTF
+  const { scene: bs  } = useGLTF(`${BASE}Bush.gltf`)           as GLTF
+  const { scene: bsf } = useGLTF(`${BASE}Bush_Flowers.gltf`)  as GLTF
+  const { scene: gl  } = useGLTF(`${BASE}Grass_Large.gltf`)   as GLTF
   const { scene: fl  } = useGLTF(`${BASE}Flower_1_Clump.gltf`) as GLTF
-  const { scene: f2  } = useGLTF(`${BASE}Flower_2_Clump.gltf`) as GLTF
 
   useMemo(() => {
     applyWindToGrassScene(gl)
-    applyWindToGrassScene(gs)
-  }, [gl, gs])
+  }, [gl])
 
   const shadowTex = useMemo(() => makeBlobTexture(), [])
   const shadowGeo = useMemo(() => new THREE.CircleGeometry(1, 16), [])
@@ -268,10 +299,10 @@ export function Scatter({
     map: shadowTex, transparent: true, depthWrite: false, color: 0x000000,
   }), [shadowTex])
 
-  const treeVariants  = [b1, b2, b3, m1, m2]
-  const deadVariants  = [d1, d2]
-  const bushVariants  = [bs, bsl, bsf]
-  const coverVariants = [gl, gs, fl, f2]
+  const treeVariants  = [b1, m1]
+  const deadVariants  = [d1]
+  const bushVariants  = [bs, bsf]
+  const coverVariants = [gl, fl]
 
   type InstanceType = ScatterPoint & { type: string; src: THREE.Object3D; s: number }
 
@@ -298,13 +329,13 @@ export function Scatter({
   }, [fieldSize])
 
   const allModels = useMemo(() => [
-    { key: 'b1', scene: b1 }, { key: 'b2', scene: b2 }, { key: 'b3', scene: b3 },
-    { key: 'm1', scene: m1 }, { key: 'm2', scene: m2 },
-    { key: 'd1', scene: d1 }, { key: 'd2', scene: d2 },
-    { key: 'bs', scene: bs }, { key: 'bsl', scene: bsl }, { key: 'bsf', scene: bsf },
-    { key: 'gl', scene: gl }, { key: 'gs', scene: gs },
-    { key: 'fl', scene: fl }, { key: 'f2', scene: f2 },
-  ], [b1, b2, b3, m1, m2, d1, d2, bs, bsl, bsf, gl, gs, fl, f2])
+    { key: 'b1', scene: b1 },
+    { key: 'm1', scene: m1 },
+    { key: 'd1', scene: d1 },
+    { key: 'bs', scene: bs }, { key: 'bsf', scene: bsf },
+    { key: 'gl', scene: gl },
+    { key: 'fl', scene: fl },
+  ], [b1, m1, d1, bs, bsf, gl, fl])
 
   const groupedInstances = useMemo(() => {
     const groups = new Map<THREE.Object3D, InstanceData[]>()

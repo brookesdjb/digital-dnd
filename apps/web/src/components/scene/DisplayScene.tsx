@@ -2,19 +2,22 @@
 
 // Display (TV/iPad) scene — read-only, driven by Supabase Realtime via useSceneSync.
 
-import { Suspense, useRef } from 'react'
+import { Suspense, useRef, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { EffectComposer, N8AO, SMAA } from '@react-three/postprocessing'
 import * as THREE from 'three'
+import type { DirectionalLight } from 'three'
 import { Rain } from './Rain'
 import { Scatter } from './Scatter'
 import { Ground, ROAD_TEXTURE_LABELS } from './Ground'
 import type { GroundIO } from './Ground'
+import { BakedGround } from './BakedGround'
 import { BattleGrid } from './BattleGrid'
 import { FogLayer } from './FogLayer'
 import type { FogIO } from './FogLayer'
 import { PlacedObjectsRenderer } from './PlacedObjectsRenderer'
 import { useSceneSync } from '@/lib/sync/useSceneSync'
+import { PerfSampler, PerformanceOverlay } from './PerformanceHUD'
 
 const DEFAULT_FOV = 45
 
@@ -25,6 +28,8 @@ interface DisplaySceneProps {
 export default function DisplayScene({ tableId }: DisplaySceneProps) {
   const groundIO = useRef<GroundIO>(undefined)
   const fogIO    = useRef<FogIO>(undefined)
+  const lightRef = useRef<DirectionalLight>(null)
+  const showPerf = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('perf')
   const {
     objects, screenW, screenH,
     bgColor, rainIntensity, showGrid,
@@ -34,6 +39,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
+    bakedGround,
   } = useSceneSync(tableId, groundIO, fogIO)
 
   const fieldSize = Math.ceil(Math.max(screenW, screenH)) + 8
@@ -42,6 +48,14 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
   const useSoftShadows = shadowMode === 'Soft Shadows' || shadowMode === 'Soft Shadows + SSAO'
   const useSSAO        = shadowMode === 'SSAO'         || shadowMode === 'Soft Shadows + SSAO'
   const showBlobs      = shadowMode === 'Blob'
+
+  // Bake shadow map once when soft shadows become active or sun moves — never re-render each frame.
+  useEffect(() => {
+    const light = lightRef.current
+    if (!light || !useSoftShadows) return
+    light.shadow.autoUpdate = false
+    light.shadow.needsUpdate = true
+  }, [useSoftShadows, sunAzimuth, sunElevation])
 
   const az = sunAzimuth   * Math.PI / 180
   const el = sunElevation * Math.PI / 180
@@ -65,6 +79,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
 
         <hemisphereLight color={hemSkyColor} groundColor={hemGroundColor} intensity={hemIntensity} />
         <directionalLight
+          ref={lightRef}
           castShadow={useSoftShadows}
           position={sunPos}
           color={sunColor}
@@ -82,15 +97,18 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
         />
 
         <Suspense fallback={null}>
-          <Ground
-            receiveShadow={useSoftShadows}
-            paintMode={false}
-            brushRadius={3}
-            brushOpacity={1}
-            eraseMode={false}
-            selectedTexture={ROAD_TEXTURE_LABELS[0]}
-            ioRef={groundIO}
-          />
+          {bakedGround
+            ? <BakedGround dataUrl={bakedGround} />
+            : <Ground
+                receiveShadow={useSoftShadows}
+                paintMode={false}
+                brushRadius={3}
+                brushOpacity={1}
+                eraseMode={false}
+                selectedTexture={ROAD_TEXTURE_LABELS[0]}
+                ioRef={groundIO}
+              />
+          }
           <Scatter
             windSpeed={windSpeed}
             windStrength={windStrength}
@@ -126,6 +144,8 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
 
         <Rain intensity={rainIntensity} fieldSize={fieldSize} />
 
+        {showPerf && <PerfSampler />}
+
         {useSSAO && (
           <EffectComposer>
             <N8AO color="black" aoRadius={aoRadius} intensity={aoIntensity} aoSamples={16} quality="medium" />
@@ -133,6 +153,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
           </EffectComposer>
         )}
       </Canvas>
+      {showPerf && <PerformanceOverlay />}
     </div>
   )
 }

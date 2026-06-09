@@ -1,40 +1,17 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useMemo } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { ObjectsIO } from '@/components/scene/ObjectPainter'
 import type { FogIO } from '@/components/scene/FogLayer'
 import { remoteLog } from '@/lib/log'
+import type { SceneState } from '@dnd-table/types'
+
+export type { SceneState }
 
 const TERRAIN_DEBOUNCE_MS = 100
 const OBJECTS_DEBOUNCE_MS = 100
 const STATE_DEBOUNCE_MS   = 200
-
-export interface SceneState {
-  showGrid:      boolean
-  rainIntensity: number
-  bgColor:       string
-  hemSkyColor:    string
-  hemGroundColor: string
-  hemIntensity:   number
-  sunColor:       string
-  sunIntensity:   number
-  sunAzimuth:     number
-  sunElevation:   number
-  fogEnabled:     boolean
-  fogColor:       string
-  fogDensity:     number
-  shadowMode:     string
-  shadowRadius:   number
-  aoRadius:       number
-  aoIntensity:    number
-  blobSize:       number
-  blobOpacity:    number
-  windSpeed:         number
-  windStrength:      number
-  fowColor:          string
-  fowDisplayOpacity: number
-}
 
 export function useScenePublish(
   tableId: string,
@@ -43,7 +20,8 @@ export function useScenePublish(
   objectsIO: React.RefObject<ObjectsIO | undefined>,
   fogIO: React.RefObject<FogIO | undefined>,
 ) {
-  const supabase     = createClient()
+  // Stable client — must not be recreated on every render (breaks channel useEffect dep).
+  const supabase     = useMemo(() => createClient(), [])
   const channelRef   = useRef<RealtimeChannel | null>(null)
   const terrainTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const objectsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)

@@ -9,7 +9,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { Rain } from './Rain'
 import { Scatter } from './Scatter'
 import { Ground } from './Ground'
-import type { GroundIO } from './Ground'
+import type { GroundIO, BakeLighting } from './Ground'
 import { BattleGrid, SCREEN_SIZES, SCREEN_SIZE_LABELS } from './BattleGrid'
 import { ObjectPainter } from './ObjectPainter'
 import type { ObjectsIO } from './ObjectPainter'
@@ -18,9 +18,23 @@ import type { FogIO } from './FogLayer'
 import { useSceneDB } from '@/lib/sync/useSceneDB'
 import { useScenePublish } from '@/lib/sync/useScenePublish'
 import { useCockpit } from '@/components/cockpit/useCockpit'
+import type { CockpitShadows, CockpitOverrides } from '@/components/cockpit/useCockpit'
 import { CockpitOverlay } from '@/components/cockpit/CockpitOverlay'
+import { PerfSampler, PerformanceOverlay } from './PerformanceHUD'
 
 const DEFAULT_FOV = 45
+
+// Profiling presets — loaded via ?preset=NAME URL param.
+// Each preset locks the cockpit to a specific feature configuration so the
+// Playwright profiler can isolate the cost of individual features.
+const PERF_PRESETS: Record<string, CockpitOverrides> = {
+  baseline:      { weather: { rain: 0 }, shadows: { mode: 'Blob' },                  grass: { windSpeed: 0, windStrength: 0 } },
+  wind:          { weather: { rain: 0 }, shadows: { mode: 'Blob' } },
+  rain:          {                       shadows: { mode: 'Blob' },                   grass: { windSpeed: 0, windStrength: 0 } },
+  'soft-shadows':{ weather: { rain: 0 }, shadows: { mode: 'Soft Shadows' },           grass: { windSpeed: 0, windStrength: 0 } },
+  ssao:          { weather: { rain: 0 }, shadows: { mode: 'SSAO' },                   grass: { windSpeed: 0, windStrength: 0 } },
+  full:          {                       shadows: { mode: 'Soft Shadows + SSAO' } },
+}
 
 interface CameraControllerProps {
   screenH:     number
@@ -52,15 +66,21 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const fogIO       = useRef<FogIO>(undefined)
   const lightRef    = useRef<THREE.DirectionalLight>(null)
 
-  const c = useCockpit()
+  // Parse profiling URL params once at mount — stable refs, no re-renders.
+  const searchParams  = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const showPerf      = searchParams?.has('perf') ?? false
+  const presetName    = searchParams?.get('preset') ?? null
+  const presetOverride = presetName ? (PERF_PRESETS[presetName] ?? null) : null
+
+  const c = useCockpit(presetOverride ?? undefined)
 
   // Save timestamp for the "Saved X ago" chip
   const [savedAt, setSavedAt] = useState(Date.now() - 42000)
   const [savedFlash, setSavedFlash] = useState(false)
 
   const {
-    save: dbSave, scheduleSave, sceneIdRef, setBgColor,
-    screenW: dbScreenW, screenH: dbScreenH,
+    save: dbSave, scheduleSave, scheduleStateSave, sceneIdRef, setBgColor, setSceneState,
+    loadedSceneState, screenW: dbScreenW, screenH: dbScreenH,
     scenes, activeSceneId, switchScene, createScene, deleteScene, renameScene,
   } = useSceneDB(tableId, groundIO, objectsIO, fogIO)
 
@@ -69,12 +89,31 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     schedulePublishFog, publishSceneActivate,
   } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO, fogIO)
 
-  const handleSave = useCallback(() => {
-    dbSave()
+  const handleSave = useCallback(async () => {
+    let bakedGround: string | undefined
+    if (groundIO.current?.bake) {
+      const az   = c.light.azimuth   * Math.PI / 180
+      const el   = c.light.elevation * Math.PI / 180
+      const dist = Math.ceil(Math.max(dbScreenW, dbScreenH)) + 8
+      const lighting: BakeLighting = {
+        hemSkyColor:    c.light.hemSkyColor,
+        hemGroundColor: c.light.hemGroundColor,
+        hemIntensity:   c.light.hemIntensity,
+        sunColor:       c.light.sunColor,
+        sunIntensity:   c.light.sunIntensity,
+        sunPosition:    [
+          Math.cos(el) * Math.sin(az) * dist,
+          Math.sin(el) * dist,
+          Math.cos(el) * Math.cos(az) * dist,
+        ],
+      }
+      bakedGround = await groundIO.current.bake(lighting)
+    }
+    dbSave({ bakedGround })
     setSavedAt(Date.now())
     setSavedFlash(true)
     setTimeout(() => setSavedFlash(false), 1400)
-  }, [dbSave])
+  }, [dbSave, groundIO, c.light, dbScreenW, dbScreenH])
 
   const handleSwitchScene = useCallback(async (id: string) => {
     await switchScene(id)
@@ -88,37 +127,73 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   // Keep DB bgColor ref in sync
   useEffect(() => { setBgColor(c.light.bgColor) }, [c.light.bgColor, setBgColor])
 
-  // Broadcast state changes to display
+  // Broadcast state changes to display, persist to DB, and keep sceneStateRef in sync.
   useEffect(() => {
-    schedulePublishState({
-      showGrid:      c.view.grid,
-      rainIntensity: c.weather.rain,
-      bgColor:       c.light.bgColor,
-      hemSkyColor:   c.light.hemSkyColor,
-      hemGroundColor: c.light.hemGroundColor,
-      hemIntensity:  c.light.hemIntensity,
-      sunColor:      c.light.sunColor,
-      sunIntensity:  c.light.sunIntensity,
-      sunAzimuth:    c.light.azimuth,
-      sunElevation:  c.light.elevation,
-      fogEnabled:    c.light.fogEnabled,
-      fogColor:      c.light.fogColor,
-      fogDensity:    c.light.fogDensity,
-      shadowMode:    c.shadows.mode,
-      shadowRadius:  c.shadows.radius,
-      aoRadius:      c.shadows.aoRadius,
-      aoIntensity:   c.shadows.aoIntensity,
-      blobSize:      c.shadows.blobSize,
-      blobOpacity:   c.shadows.blobOpacity,
-      windSpeed:     c.grass.windSpeed,
-      windStrength:  c.grass.windStrength,
-      fowColor:      c.fog.color,
+    const state = {
+      showGrid:          c.view.grid,
+      rainIntensity:     c.weather.rain,
+      bgColor:           c.light.bgColor,
+      hemSkyColor:       c.light.hemSkyColor,
+      hemGroundColor:    c.light.hemGroundColor,
+      hemIntensity:      c.light.hemIntensity,
+      sunColor:          c.light.sunColor,
+      sunIntensity:      c.light.sunIntensity,
+      sunAzimuth:        c.light.azimuth,
+      sunElevation:      c.light.elevation,
+      fogEnabled:        c.light.fogEnabled,
+      fogColor:          c.light.fogColor,
+      fogDensity:        c.light.fogDensity,
+      shadowMode:        c.shadows.mode,
+      shadowRadius:      c.shadows.radius,
+      aoRadius:          c.shadows.aoRadius,
+      aoIntensity:       c.shadows.aoIntensity,
+      blobSize:          c.shadows.blobSize,
+      blobOpacity:       c.shadows.blobOpacity,
+      windSpeed:         c.grass.windSpeed,
+      windStrength:      c.grass.windStrength,
+      fowColor:          c.fog.color,
       fowDisplayOpacity: c.fog.playerOpacity,
-    })
+    }
+    schedulePublishState(state)
+    setSceneState(state)
+    scheduleStateSave()
   }, [
     c.view.grid, c.weather.rain, c.light, c.shadows, c.grass,
-    c.fog.color, c.fog.playerOpacity, schedulePublishState,
+    c.fog.color, c.fog.playerOpacity,
+    schedulePublishState, setSceneState, scheduleStateSave,
   ])
+
+  // Restore cockpit state when DB loads (refresh or scene switch).
+  // Skipped when a profiling preset is active — preset values must not be overridden.
+  useEffect(() => {
+    if (!loadedSceneState || presetOverride) return
+    c.setLight({
+      hemSkyColor:    loadedSceneState.hemSkyColor,
+      hemGroundColor: loadedSceneState.hemGroundColor,
+      hemIntensity:   loadedSceneState.hemIntensity,
+      sunColor:       loadedSceneState.sunColor,
+      sunIntensity:   loadedSceneState.sunIntensity,
+      azimuth:        loadedSceneState.sunAzimuth,
+      elevation:      loadedSceneState.sunElevation,
+      fogEnabled:     loadedSceneState.fogEnabled,
+      fogColor:       loadedSceneState.fogColor,
+      fogDensity:     loadedSceneState.fogDensity,
+      bgColor:        loadedSceneState.bgColor,
+    })
+    c.setShadows({
+      mode:       loadedSceneState.shadowMode as CockpitShadows['mode'],
+      radius:     loadedSceneState.shadowRadius,
+      aoRadius:   loadedSceneState.aoRadius,
+      aoIntensity: loadedSceneState.aoIntensity,
+      blobSize:   loadedSceneState.blobSize,
+      blobOpacity: loadedSceneState.blobOpacity,
+    })
+    c.setWeather({ rain: loadedSceneState.rainIntensity })
+    c.setGrass({ windSpeed: loadedSceneState.windSpeed, windStrength: loadedSceneState.windStrength })
+    c.setFog({ color: loadedSceneState.fowColor, playerOpacity: loadedSceneState.fowDisplayOpacity })
+    c.setView({ grid: loadedSceneState.showGrid })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedSceneState])
 
   // Shadow baking
   const objectPaintMode = c.tool === 'object'
@@ -133,7 +208,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
       light.shadow.autoUpdate = false
       light.shadow.needsUpdate = true
     }
-  }, [objectPaintMode])
+  }, [objectPaintMode, useSoftShadows])
 
   useEffect(() => {
     const light = lightRef.current
@@ -256,6 +331,8 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
           </EffectComposer>
         )}
 
+        {showPerf && <PerfSampler />}
+
         <OrbitControls
           ref={controlsRef}
           enabled={!painting}
@@ -271,6 +348,8 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
           enableRotate={false}
         />
       </Canvas>
+
+      {showPerf && <PerformanceOverlay />}
 
       <CockpitOverlay
         c={c}

@@ -1,12 +1,40 @@
 export type ShadowType = 'tree' | 'dead' | 'bush' | 'cover'
 
+export interface SceneState {
+  showGrid:          boolean
+  rainIntensity:     number
+  bgColor:           string
+  hemSkyColor:       string
+  hemGroundColor:    string
+  hemIntensity:      number
+  sunColor:          string
+  sunIntensity:      number
+  sunAzimuth:        number
+  sunElevation:      number
+  fogEnabled:        boolean
+  fogColor:          string
+  fogDensity:        number
+  shadowMode:        string
+  shadowRadius:      number
+  aoRadius:          number
+  aoIntensity:       number
+  blobSize:          number
+  blobOpacity:       number
+  windSpeed:         number
+  windStrength:      number
+  fowColor:          string
+  fowDisplayOpacity: number
+}
+
 export type MapRotation = 0 | 90 | 180 | 270
 
 export type WeatherType = 'none' | 'rain'
 
 export interface TerrainState {
   textures: string[]
-  layers: string[]   // base64 PNG masks, one per texture
+  layers: string[]       // base64 PNG masks, one per texture
+  bakedGround?: string   // base64 JPEG — composited flat texture, used by display route
+  sceneState?: SceneState // lighting, shadows, weather — persisted alongside terrain
 }
 
 export interface PlacedObject {
