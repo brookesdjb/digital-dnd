@@ -115,6 +115,40 @@ export function useSceneSync(
   useEffect(() => {
     const ch = supabase.channel(`table:${tableId}`)
     ch
+      .on('broadcast', { event: 'SCENE_ACTIVATE' }, async ({ payload }) => {
+        const { sceneId } = payload as { sceneId: string }
+        remoteLog('display', '← SCENE_ACTIVATE', { sceneId })
+
+        // Clear current 3D state immediately
+        if (groundIO.current) await groundIO.current.load([])
+        if (fogIO.current) fogIO.current.clear()
+        setObjects([])
+        pendingTerrain.current = null
+        pendingFogMask.current = null
+
+        const { data: scene } = await supabase
+          .from('scene')
+          .select('id, terrain, objects, bg_color, fog_mask')
+          .eq('id', sceneId)
+          .single()
+        if (!scene) return
+
+        const terrain  = scene.terrain  as { layers?: string[] } | null
+        const objs     = scene.objects  as PlacedObject[] | null
+        const fogMask  = (scene as { fog_mask?: string | null }).fog_mask ?? null
+
+        if (terrain?.layers) {
+          if (groundIO.current) await groundIO.current.load(terrain.layers)
+          else pendingTerrain.current = terrain.layers
+        }
+        if (fogMask) {
+          if (fogIO.current) await fogIO.current.load(fogMask)
+          else pendingFogMask.current = fogMask
+        }
+        if (objs) setObjects(objs)
+        if (scene.bg_color) setBgColor(scene.bg_color)
+        remoteLog('display', 'SCENE_ACTIVATE loaded', { sceneId, objects: objs?.length ?? 0 })
+      })
       .on('broadcast', { event: 'TERRAIN_UPDATED' }, async ({ payload }) => {
         const layers = (payload as { terrain: { layers: string[] } }).terrain.layers
         remoteLog('display', '← TERRAIN_UPDATED', { layers: `${layers.length} layers` })

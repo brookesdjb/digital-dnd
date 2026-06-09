@@ -16,6 +16,7 @@ import { ObjectPainter } from './ObjectPainter'
 import type { ObjectsIO } from './ObjectPainter'
 import { FogLayer } from './FogLayer'
 import type { FogIO } from './FogLayer'
+import { SceneList } from './SceneList'
 import { useSceneDB } from '@/lib/sync/useSceneDB'
 import { useScenePublish } from '@/lib/sync/useScenePublish'
 
@@ -54,8 +55,19 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const fogIO       = useRef<FogIO>(undefined)
   const lightRef    = useRef<THREE.DirectionalLight>(null)
 
-  const { save, scheduleSave, sceneIdRef, setBgColor, screenW: dbScreenW, screenH: dbScreenH } = useSceneDB(tableId, groundIO, objectsIO, fogIO)
-  const { schedulePublishTerrain, schedulePublishObjects, schedulePublishState, schedulePublishFog } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO, fogIO)
+  const {
+    save, scheduleSave, sceneIdRef, setBgColor, screenW: dbScreenW, screenH: dbScreenH,
+    scenes, activeSceneId, switchScene, createScene, deleteScene, renameScene,
+  } = useSceneDB(tableId, groundIO, objectsIO, fogIO)
+  const {
+    schedulePublishTerrain, schedulePublishObjects, schedulePublishState,
+    schedulePublishFog, publishSceneActivate,
+  } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO, fogIO)
+
+  const handleSwitchScene = useCallback(async (id: string) => {
+    await switchScene(id)
+    publishSceneActivate(id)
+  }, [switchScene, publishSceneActivate])
 
   const onTerrainChange = useCallback(() => { schedulePublishTerrain(); scheduleSave() }, [schedulePublishTerrain, scheduleSave])
   const onObjectsChange = useCallback(() => { schedulePublishObjects(); scheduleSave() }, [schedulePublishObjects, scheduleSave])
@@ -196,6 +208,14 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
 
   return (
     <div style={{ width: '100%', height: '100%', background: bgColor, cursor: (paintMode || objectPaintMode || fogPaintMode) ? 'none' : 'auto' }}>
+      <SceneList
+        scenes={scenes}
+        activeSceneId={activeSceneId}
+        onSwitch={handleSwitchScene}
+        onCreate={createScene}
+        onDelete={deleteScene}
+        onRename={renameScene}
+      />
       <Canvas
         shadows
         camera={{ position: [0, initH, 0.001], fov: DEFAULT_FOV, near: 0.1, far: 300 }}

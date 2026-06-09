@@ -116,11 +116,18 @@ export function useScenePublish(
     fogTimer.current = setTimeout(publishFog, 100)
   }, [publishFog])
 
+  const publishSceneActivate = useCallback((newSceneId: string) => {
+    const ch = channelRef.current
+    if (!ch) return
+    remoteLog('control', '→ SCENE_ACTIVATE', { sceneId: newSceneId })
+    ch.send({ type: 'broadcast', event: 'SCENE_ACTIVATE', payload: { sceneId: newSceneId } })
+  }, [])
+
   // Re-broadcast state every 8s so displays that connect after the initial publish catch up.
   useEffect(() => {
     const id = setInterval(publishState, 8000)
     return () => clearInterval(id)
   }, [publishState])
 
-  return { schedulePublishTerrain, schedulePublishObjects, schedulePublishState, schedulePublishFog }
+  return { schedulePublishTerrain, schedulePublishObjects, schedulePublishState, schedulePublishFog, publishSceneActivate }
 }
