@@ -208,6 +208,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   useEffect(() => {
     const state = {
       showGrid:          c.view.grid,
+      gridLineWidth:     c.view.gridLineWidth,
       rainIntensity:     c.weather.rain,
       bgColor:           c.light.bgColor,
       hemSkyColor:       c.light.hemSkyColor,
@@ -268,7 +269,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     c.setWeather({ rain: loadedSceneState.rainIntensity })
     c.setGrass({ windSpeed: loadedSceneState.windSpeed, windStrength: loadedSceneState.windStrength })
     c.setFog({ color: loadedSceneState.fowColor, playerOpacity: loadedSceneState.fowDisplayOpacity })
-    c.setView({ grid: loadedSceneState.showGrid })
+    c.setView({ grid: loadedSceneState.showGrid, gridLineWidth: loadedSceneState.gridLineWidth ?? 1.0 })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedSceneState])
 
@@ -390,7 +391,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
             ioRef={fogIO}
             onChange={onFogChange}
           />
-          <BattleGrid screenW={screenDims.w} screenH={screenDims.h} visible={c.view.grid} showBorder={c.view.border} />
+          <BattleGrid screenW={screenDims.w} screenH={screenDims.h} visible={c.view.grid} showBorder={c.view.border} lineWidth={c.view.gridLineWidth} />
           <ObjectPainter
             objectPaintMode={objectPaintMode}
             selectedModel={c.object.model}

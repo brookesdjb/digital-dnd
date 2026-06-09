@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react'
 import { Line } from '@react-three/drei'
-import * as THREE from 'three'
 
 // 16:9 TV sizes: diagonal → physical width × height in inches
 // 1 world unit = 1 inch = 1 D&D grid square
@@ -26,41 +25,31 @@ interface BattleGridProps {
   screenH: number
   visible: boolean
   showBorder?: boolean
+  lineWidth?: number
 }
 
-export function BattleGrid({ screenW, screenH, visible, showBorder = true }: BattleGridProps) {
+export function BattleGrid({ screenW, screenH, visible, showBorder = true, lineWidth = 1 }: BattleGridProps) {
   const borderPoints = useMemo((): [number, number, number][] => {
     const hw = screenW / 2, hh = screenH / 2, y = 0.05
-    return [
-      [-hw, y, -hh],
-      [ hw, y, -hh],
-      [ hw, y,  hh],
-      [-hw, y,  hh],
-      [-hw, y, -hh],
-    ]
+    return [[-hw,y,-hh],[hw,y,-hh],[hw,y,hh],[-hw,y,hh],[-hw,y,-hh]]
   }, [screenW, screenH])
 
-  const { minorGeo, majorGeo } = useMemo(() => {
+  const { minorPts, majorPts } = useMemo(() => {
     const hw = Math.ceil(screenW / 2) + 1
     const hh = Math.ceil(screenH / 2) + 1
-    const minor: number[] = []
-    const major: number[] = []
+    const minor: [number,number,number][] = []
+    const major: [number,number,number][] = []
     const y = 0.03
 
     for (let x = -hw; x <= hw; x++) {
       const arr = x % 5 === 0 ? major : minor
-      arr.push(x, y, -hh,  x, y, hh)
+      arr.push([x, y, -hh], [x, y, hh])
     }
     for (let z = -hh; z <= hh; z++) {
       const arr = z % 5 === 0 ? major : minor
-      arr.push(-hw, y, z,  hw, y, z)
+      arr.push([-hw, y, z], [hw, y, z])
     }
-
-    const minorGeo = new THREE.BufferGeometry()
-    minorGeo.setAttribute('position', new THREE.Float32BufferAttribute(minor, 3))
-    const majorGeo = new THREE.BufferGeometry()
-    majorGeo.setAttribute('position', new THREE.Float32BufferAttribute(major, 3))
-    return { minorGeo, majorGeo }
+    return { minorPts: minor, majorPts: major }
   }, [screenW, screenH])
 
   return (
@@ -68,12 +57,10 @@ export function BattleGrid({ screenW, screenH, visible, showBorder = true }: Bat
       {showBorder && <Line points={borderPoints} color="#ffffff" lineWidth={2.5} depthWrite={false} />}
       {visible && (
         <>
-          <lineSegments geometry={minorGeo}>
-            <lineBasicMaterial color="#1a1a2e" transparent opacity={0.18} depthWrite={false} />
-          </lineSegments>
-          <lineSegments geometry={majorGeo}>
-            <lineBasicMaterial color="#1a1a2e" transparent opacity={0.45} depthWrite={false} />
-          </lineSegments>
+          <Line points={minorPts} segments lineWidth={lineWidth}
+            color="#ffffff" transparent opacity={0.15} depthWrite={false} />
+          <Line points={majorPts} segments lineWidth={lineWidth * 1.5}
+            color="#ffffff" transparent opacity={0.4} depthWrite={false} />
         </>
       )}
     </group>

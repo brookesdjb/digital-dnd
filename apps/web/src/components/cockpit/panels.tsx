@@ -263,6 +263,8 @@ export function ViewControls({ c, actions }: { c: CockpitState; actions: PanelAc
     <div className="ck-stack">
       <Toggle label="Battle grid" sub="Calibrated 1″ squares"
         checked={view.grid} onChange={v => setView({ grid: v })} />
+      <Slider label="Grid line width" value={view.gridLineWidth} min={0.5} max={4} step={0.5}
+        onChange={v => setView({ gridLineWidth: v })} fmt={v => v + 'px'} />
       <Toggle label="Screen border" sub="Outline display bounds"
         checked={view.border} onChange={v => setView({ border: v })} />
       <Slider label="Field of view" value={view.fov} min={16} max={60} step={1}

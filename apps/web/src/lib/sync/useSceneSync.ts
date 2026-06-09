@@ -37,6 +37,7 @@ export function useSceneSync(
   const [windStrength,      setWindStrength]      = useState(1.0)
   const [fowColor,          setFowColor]          = useState('#0a0a1a')
   const [fowDisplayOpacity, setFowDisplayOpacity] = useState(0.92)
+  const [gridLineWidth,     setGridLineWidth]     = useState(1.0)
   const [bakedGround,       setBakedGround]       = useState<string | null>(null)
   const [mapImages,         setMapImages]         = useState<PlacedImage[]>([])
   const [isPaused,          setIsPaused]          = useState(false)
@@ -71,6 +72,7 @@ export function useSceneSync(
     setWindStrength(s.windStrength)
     setFowColor(s.fowColor)
     setFowDisplayOpacity(s.fowDisplayOpacity)
+    setGridLineWidth(s.gridLineWidth ?? 1.0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -256,11 +258,14 @@ export function useSceneSync(
         if (p.windStrength      !== undefined) setWindStrength(p.windStrength      as number)
         if (p.fowColor          !== undefined) setFowColor(p.fowColor          as string)
         if (p.fowDisplayOpacity !== undefined) setFowDisplayOpacity(p.fowDisplayOpacity as number)
+        if (p.gridLineWidth     !== undefined) setGridLineWidth(p.gridLineWidth     as number)
       })
       .subscribe((status) => {
         if (cancelled) return
         if (status === 'SUBSCRIBED') {
           setIsConnected(true)
+          // Ask the control client to send current state immediately (instead of waiting up to 8s).
+          ch.send({ type: 'broadcast', event: 'REQUEST_SYNC', payload: {} })
           if (hasPreviouslySubscribed.value) {
             // Supabase auto-recovered: re-fetch DB to catch up on any missed messages.
             void loadScene()
@@ -288,7 +293,7 @@ export function useSceneSync(
 
   return {
     objects, screenW, screenH, isPaused,
-    bgColor, rainIntensity, showGrid,
+    bgColor, rainIntensity, showGrid, gridLineWidth,
     hemSkyColor, hemGroundColor, hemIntensity,
     sunColor, sunIntensity, sunAzimuth, sunElevation,
     fogEnabled, fogColor, fogDensity,

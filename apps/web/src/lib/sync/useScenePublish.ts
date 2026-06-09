@@ -33,9 +33,16 @@ export function useScenePublish(
 
   useEffect(() => {
     const ch = supabase.channel(`table:${tableId}`)
-    ch.subscribe()
+    ch
+      .on('broadcast', { event: 'REQUEST_SYNC' }, () => {
+        remoteLog('control', '← REQUEST_SYNC', {})
+        publishState()
+      })
+      .subscribe()
     channelRef.current = ch
     return () => void supabase.removeChannel(ch)
+  // publishState is a stable useCallback (only refs in deps) — safe to include
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableId, supabase])
 
   const publishTerrain = useCallback(async () => {

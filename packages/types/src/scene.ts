@@ -24,6 +24,7 @@ export interface SceneState {
   windStrength:      number
   fowColor:          string
   fowDisplayOpacity: number
+  gridLineWidth:     number
 }
 
 export type MapRotation = 0 | 90 | 180 | 270

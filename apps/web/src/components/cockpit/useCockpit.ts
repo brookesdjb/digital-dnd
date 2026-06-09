@@ -55,6 +55,7 @@ export interface CockpitView {
   border: boolean
   fov: number
   screenSize: string
+  gridLineWidth: number
 }
 
 export interface CockpitShadows {
@@ -171,7 +172,7 @@ export function useCockpit(overrides?: CockpitOverrides): CockpitState {
   const [weather, _setWeather] = useState<CockpitWeather>({ rain: 1.0, ...overrides?.weather })
   const [grass,   _setGrass]   = useState<CockpitGrass>({ windSpeed: 1.2, windStrength: 1.0, ...overrides?.grass })
   const [view, _setView] = useState<CockpitView>({
-    grid: false, border: true, fov: 45,
+    grid: false, border: true, fov: 45, gridLineWidth: 1.0,
     screenSize: SCREEN_SIZE_LABELS[0],
   })
   const [shadows, _setShadows] = useState<CockpitShadows>({
