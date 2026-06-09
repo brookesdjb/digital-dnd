@@ -566,6 +566,137 @@ function Ash({ intensity, fieldSize, hemSkyColor, hemGroundColor }: AshProps) {
   return <instancedMesh ref={ref} args={[geo, mat, count]} frustumCulled={false} visible={intensity > 0} />
 }
 
+// ── Lightning ─────────────────────────────────────────────────────────────────
+
+// Simple vertex shader for a static mesh with its own world transform.
+const FLASH_VERT = /* glsl */`
+  void main() {
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+
+// Full-screen additive blue-white flash, driven by uBrightness uniform.
+const FLASH_FRAG = /* glsl */`
+  uniform float uBrightness;
+  void main() {
+    if (uBrightness < 0.003) discard;
+    gl_FragColor = vec4(0.70, 0.86, 1.0, uBrightness * 0.55);
+  }
+`
+
+// Generates a randomised zigzag path lying flat on the ground (Y = 0.09).
+function makeBoltPath(cx: number, cz: number): THREE.Vector3[] {
+  const length = 10 + Math.random() * 14
+  const angle  = Math.random() * Math.PI * 2
+  const dx = Math.cos(angle), dz = Math.sin(angle)
+  const px = -dz,             pz =  dx
+  const points: THREE.Vector3[] = []
+  const N = 9
+  for (let i = 0; i <= N; i++) {
+    const t   = i / N
+    const dev = (Math.random() - 0.5) * 2.5 * Math.sin(t * Math.PI)
+    points.push(new THREE.Vector3(
+      cx + dx * (t - 0.5) * length + px * dev,
+      0.09,
+      cz + dz * (t - 0.5) * length + pz * dev,
+    ))
+  }
+  return points
+}
+
+interface LightningProps { intensity: number; fieldSize: number }
+
+function Lightning({ intensity, fieldSize }: LightningProps) {
+  const fieldRef = useRef(fieldSize)
+  useEffect(() => { fieldRef.current = fieldSize }, [fieldSize])
+
+  // Flash: static large plane, material updated imperatively each frame.
+  const flashMat = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: FLASH_VERT,
+    fragmentShader: FLASH_FRAG,
+    uniforms: { uBrightness: { value: 0 } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  }), [])
+
+  // Bolt: Three.js Mesh managed imperatively so React doesn't overwrite geometry.
+  const boltMat = useMemo(() => new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0.75, 0.90, 1.0),
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  }), [])
+
+  const boltMesh = useMemo(() => {
+    const m = new THREE.Mesh(new THREE.BufferGeometry(), boltMat)
+    m.visible = false
+    m.frustumCulled = false
+    return m
+  }, [boltMat])
+
+  // Animation state — all refs to avoid re-renders.
+  const flashBrightness  = useRef(0)
+  const boltOpacity      = useRef(0)
+  const nextStrike       = useRef(1.5 + Math.random() * 3)
+  const secondaryDelay   = useRef(-1)  // -1 = inactive
+
+  const doStrike = useMemo(() => () => {
+    const cx = (Math.random() - 0.5) * fieldRef.current * 0.65
+    const cz = (Math.random() - 0.5) * fieldRef.current * 0.65
+    const curve  = new THREE.CatmullRomCurve3(makeBoltPath(cx, cz))
+    const newGeo = new THREE.TubeGeometry(curve, 20, 0.14, 4, false)
+    boltMesh.geometry.dispose()
+    boltMesh.geometry = newGeo
+    boltMesh.visible  = true
+    flashBrightness.current = 1.0
+    boltOpacity.current     = 1.0
+    if (Math.random() > 0.4) secondaryDelay.current = 0.08 + Math.random() * 0.07
+  // boltMesh is stable (useMemo), no deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boltMesh])
+
+  useEffect(() => () => { boltMesh.geometry.dispose() }, [boltMesh])
+
+  useFrame((_, dt) => {
+    if (intensity === 0) return
+
+    // Decay flash (slow) and bolt opacity (fast).
+    flashBrightness.current = Math.max(0, flashBrightness.current - dt * 5.5)
+    boltOpacity.current     = Math.max(0, boltOpacity.current     - dt * 11)
+
+    // Secondary flash trigger.
+    if (secondaryDelay.current > 0) {
+      secondaryDelay.current -= dt
+      if (secondaryDelay.current <= 0) {
+        flashBrightness.current = Math.max(flashBrightness.current, 0.55)
+        secondaryDelay.current  = -1
+      }
+    }
+
+    flashMat.uniforms.uBrightness.value = flashBrightness.current * Math.min(intensity, 1.5)
+    boltMat.opacity = boltOpacity.current * Math.min(intensity, 1.5) * 0.9
+    if (boltOpacity.current <= 0) boltMesh.visible = false
+
+    nextStrike.current -= dt
+    if (nextStrike.current <= 0) {
+      doStrike()
+      nextStrike.current = Math.max(0.6, (3.5 / intensity) * (0.5 + Math.random()))
+    }
+  })
+
+  return (
+    <>
+      {/* Flash: large horizontal plane above the scene */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.07, 0]} material={flashMat}>
+        <planeGeometry args={[200, 200]} />
+      </mesh>
+      {/* Bolt: geometry replaced imperatively on each strike */}
+      <primitive object={boltMesh} />
+    </>
+  )
+}
+
 // ── Composite export ──────────────────────────────────────────────────────────
 
 export interface AmbientEffectsProps {
@@ -578,11 +709,12 @@ export interface AmbientEffectsProps {
   mist:      number
   fireflies: number
   ash:       number
+  lightning: number
 }
 
 export function AmbientEffects({
   fieldSize, hemSkyColor, hemGroundColor,
-  embers, dust, snow, mist, fireflies, ash,
+  embers, dust, snow, mist, fireflies, ash, lightning,
 }: AmbientEffectsProps) {
   return (
     <>
@@ -592,6 +724,7 @@ export function AmbientEffects({
       <DriftingMist intensity={mist}      fieldSize={fieldSize} hemSkyColor={hemSkyColor} hemGroundColor={hemGroundColor} />
       <Fireflies    intensity={fireflies} fieldSize={fieldSize} />
       <Ash          intensity={ash}       fieldSize={fieldSize} hemSkyColor={hemSkyColor} hemGroundColor={hemGroundColor} />
+      <Lightning    intensity={lightning} fieldSize={fieldSize} />
     </>
   )
 }

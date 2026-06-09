@@ -55,6 +55,7 @@ export interface CockpitWeather {
   mist:      number
   fireflies: number
   ash:       number
+  lightning: number
 }
 export interface CockpitGrass   { windSpeed: number; windStrength: number }
 
@@ -178,7 +179,7 @@ export function useCockpit(overrides?: CockpitOverrides): CockpitState {
   })
   const [light, _setLight] = useState<CockpitLight>({ ...DAY, preset: DAY.id, ...overrides?.light })
   const [weather, _setWeather] = useState<CockpitWeather>({
-    rain: 1.0, embers: 0, dust: 0, snow: 0, mist: 0, fireflies: 0, ash: 0,
+    rain: 1.0, embers: 0, dust: 0, snow: 0, mist: 0, fireflies: 0, ash: 0, lightning: 0,
     ...overrides?.weather,
   })
   const [grass,   _setGrass]   = useState<CockpitGrass>({ windSpeed: 1.2, windStrength: 1.0, ...overrides?.grass })

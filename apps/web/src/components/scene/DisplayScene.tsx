@@ -125,7 +125,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
-    embersIntensity, dustIntensity, snowIntensity, mistIntensity, firefliesIntensity, ashIntensity,
+    embersIntensity, dustIntensity, snowIntensity, mistIntensity, firefliesIntensity, ashIntensity, lightningIntensity,
     bakedGround, mapImages,
     isConnected,
   } = useSceneSync(tableId, groundIO, fogIO)
@@ -243,6 +243,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
           mist={mistIntensity}
           fireflies={firefliesIntensity}
           ash={ashIntensity}
+          lightning={lightningIntensity}
         />
 
         {showPerf && <PerfSampler />}

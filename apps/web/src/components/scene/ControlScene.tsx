@@ -238,6 +238,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
       mistIntensity:      c.weather.mist,
       firefliesIntensity: c.weather.fireflies,
       ashIntensity:       c.weather.ash,
+      lightningIntensity: c.weather.lightning,
     }
     schedulePublishState(state)
     setSceneState(state)
@@ -281,6 +282,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
       mist:      loadedSceneState.mistIntensity      ?? 0,
       fireflies: loadedSceneState.firefliesIntensity ?? 0,
       ash:       loadedSceneState.ashIntensity       ?? 0,
+      lightning: loadedSceneState.lightningIntensity ?? 0,
     })
     c.setGrass({ windSpeed: loadedSceneState.windSpeed, windStrength: loadedSceneState.windStrength })
     c.setFog({ color: loadedSceneState.fowColor, playerOpacity: loadedSceneState.fowDisplayOpacity })
@@ -443,6 +445,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
           mist={c.weather.mist}
           fireflies={c.weather.fireflies}
           ash={c.weather.ash}
+          lightning={c.weather.lightning}
         />
 
         {useSSAO && (

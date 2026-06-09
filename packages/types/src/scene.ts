@@ -31,6 +31,7 @@ export interface SceneState {
   mistIntensity?:      number
   firefliesIntensity?: number
   ashIntensity?:       number
+  lightningIntensity?: number
 }
 
 export type MapRotation = 0 | 90 | 180 | 270

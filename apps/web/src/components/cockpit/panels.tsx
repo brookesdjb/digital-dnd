@@ -255,6 +255,8 @@ export function WeatherControls({ c }: { c: CockpitState }) {
           onChange={v => setWeather({ dust: v })}      fmt={v => v.toFixed(2) + '×'} />
         <Slider label="Mist"      value={weather.mist}      min={0} max={2} step={0.05}
           onChange={v => setWeather({ mist: v })}      fmt={v => v.toFixed(2) + '×'} />
+        <Slider label="Lightning" value={weather.lightning} min={0} max={2} step={0.05}
+          onChange={v => setWeather({ lightning: v })} fmt={v => v.toFixed(2) + '×'} />
       </div>
       <span className="ck-sub-head">Vegetation wind</span>
       <div className="ck-split">

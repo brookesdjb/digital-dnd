@@ -44,6 +44,7 @@ export function useSceneSync(
   const [mistIntensity,        setMistIntensity]        = useState(0)
   const [firefliesIntensity,   setFirefliesIntensity]   = useState(0)
   const [ashIntensity,         setAshIntensity]         = useState(0)
+  const [lightningIntensity,   setLightningIntensity]   = useState(0)
   const [bakedGround,          setBakedGround]          = useState<string | null>(null)
   const [mapImages,         setMapImages]         = useState<PlacedImage[]>([])
   const [isPaused,          setIsPaused]          = useState(false)
@@ -85,6 +86,7 @@ export function useSceneSync(
     setMistIntensity(s.mistIntensity ?? 0)
     setFirefliesIntensity(s.firefliesIntensity ?? 0)
     setAshIntensity(s.ashIntensity ?? 0)
+    setLightningIntensity(s.lightningIntensity ?? 0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -277,6 +279,7 @@ export function useSceneSync(
         if (p.mistIntensity        !== undefined) setMistIntensity(p.mistIntensity        as number)
         if (p.firefliesIntensity   !== undefined) setFirefliesIntensity(p.firefliesIntensity   as number)
         if (p.ashIntensity         !== undefined) setAshIntensity(p.ashIntensity         as number)
+        if (p.lightningIntensity   !== undefined) setLightningIntensity(p.lightningIntensity   as number)
       })
       .subscribe((status) => {
         if (cancelled) return
@@ -318,7 +321,7 @@ export function useSceneSync(
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
-    embersIntensity, dustIntensity, snowIntensity, mistIntensity, firefliesIntensity, ashIntensity,
+    embersIntensity, dustIntensity, snowIntensity, mistIntensity, firefliesIntensity, ashIntensity, lightningIntensity,
     bakedGround, mapImages,
     isConnected,
   }
