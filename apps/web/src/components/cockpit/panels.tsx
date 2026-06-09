@@ -202,7 +202,7 @@ export function LightingControls({ c }: { c: CockpitState }) {
           onChange={v => setLight({ elevation: v, preset: 'custom' })} fmt={v => v + '°'} />
       </div>
       <span className="ck-sub-head">Ambient</span>
-      <Slider label="Intensity" value={light.hemIntensity} min={0} max={4} step={0.1}
+      <Slider label="Intensity" value={light.hemIntensity} min={0} max={6} step={0.1}
         onChange={v => setLight({ hemIntensity: v, preset: 'custom' })} fmt={v => v.toFixed(1)} />
       <Toggle label="Atmospheric fog" checked={light.fogEnabled}
         onChange={v => setLight({ fogEnabled: v })} />

@@ -127,15 +127,15 @@ export const LIGHT_PRESETS: LightPreset[] = [
   },
   {
     id: 'night', name: 'Night', skyGrad: ['#1d2740', '#0a0f1e'],
-    bgColor: '#0a0f1e', hemSkyColor: '#1a2040', hemGroundColor: '#05070e', hemIntensity: 0.5,
-    sunColor: '#8090c0', sunIntensity: 0.2, azimuth: 200, elevation: 35,
-    fogEnabled: true, fogColor: '#0d1020', fogDensity: 0.025,
+    bgColor: '#0a0f1e', hemSkyColor: '#2a3d6a', hemGroundColor: '#0c0e1a', hemIntensity: 0.9,
+    sunColor: '#a0b8e0', sunIntensity: 0.5, azimuth: 200, elevation: 35,
+    fogEnabled: true, fogColor: '#0d1020', fogDensity: 0.018,
   },
   {
     id: 'cave', name: 'Cavern', skyGrad: ['#18140c', '#060504'],
-    bgColor: '#060504', hemSkyColor: '#100e08', hemGroundColor: '#060504', hemIntensity: 0.3,
-    sunColor: '#b08040', sunIntensity: 0.12, azimuth: 90, elevation: 70,
-    fogEnabled: true, fogColor: '#080604', fogDensity: 0.05,
+    bgColor: '#060504', hemSkyColor: '#2e1e08', hemGroundColor: '#120c04', hemIntensity: 0.7,
+    sunColor: '#d07828', sunIntensity: 0.5, azimuth: 90, elevation: 70,
+    fogEnabled: true, fogColor: '#080604', fogDensity: 0.035,
   },
 ]
 
