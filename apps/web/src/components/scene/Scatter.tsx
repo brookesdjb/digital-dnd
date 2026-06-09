@@ -5,11 +5,13 @@ import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { GLTF } from 'three-stdlib'
+import { applyWindByType, tickWind, type WindType } from './wind'
+
+// Re-export for callers that imported grassWindUniforms from Scatter directly.
+export { windUniforms as grassWindUniforms } from './wind'
 
 const BASE = '/models/kaykit/'
 
-// Reduced to 8 models (variants cut: BirchTree_2/3, MapleTree_2, DeadTree_2,
-// Bush_Large, Grass_Small, Flower_2_Clump) — visual diversity from random scale/rotation.
 const MODELS = [
   'BirchTree_1',
   'MapleTree_1',
@@ -20,71 +22,11 @@ const MODELS = [
 ]
 MODELS.forEach(m => useGLTF.preload(`${BASE}${m}.gltf`))
 
-// ── shared wind uniforms ──────────────────────────────────────────────────────
-// Exported so ObjectPainter can apply the same wind to manually placed grass.
-
-export const grassWindUniforms = {
-  uTime:         { value: 0 },
-  uWindSpeed:    { value: 1.4 },
-  uWindStrength: { value: 1.0 },
-}
-
-// Single stable function reference — required for Three.js customProgramCacheKey
-// to deduplicate the wind program across all grass material instances.
-function windOnBeforeCompile(shader: THREE.WebGLProgramParametersWithUniforms) {
-  shader.uniforms.uTime         = grassWindUniforms.uTime
-  shader.uniforms.uWindSpeed    = grassWindUniforms.uWindSpeed
-  shader.uniforms.uWindStrength = grassWindUniforms.uWindStrength
-  shader.vertexShader =
-    `uniform float uTime;\nuniform float uWindSpeed;\nuniform float uWindStrength;\n`
-    + shader.vertexShader
-  shader.vertexShader = shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    /* glsl */`
-    #include <begin_vertex>
-    float windHeight = 1.0 - uv.y;
-    #ifdef USE_INSTANCING
-      vec3 wPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
-    #else
-      vec3 wPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-    #endif
-    float wave = sin(uTime * uWindSpeed       + wPos.x * 1.9 + wPos.z * 1.3) * 0.20;
-    float gust = sin(uTime * uWindSpeed * 0.2 + wPos.x * 0.5               ) * 0.12;
-    transformed.x += (wave + gust) * windHeight * uWindStrength;
-    transformed.z += wave * 0.4   * windHeight * uWindStrength;
-    `
-  )
-}
-
-export function applyGrassWind(material: THREE.Material) {
-  const mat = material as THREE.Material & {
-    _windApplied?: boolean
-    onBeforeCompile: typeof windOnBeforeCompile
-    customProgramCacheKey: () => string
-    needsUpdate: boolean
-  }
-  if (mat._windApplied) return
-  mat._windApplied = true
-  mat.onBeforeCompile = windOnBeforeCompile
-  // Stable cache key — all wind-modified materials share one compiled GPU program.
-  mat.customProgramCacheKey = () => 'grass-wind-v1'
-  mat.needsUpdate = true
-}
-
-export function applyWindToGrassScene(scene: THREE.Object3D) {
-  scene.traverse(child => {
-    if (!(child as THREE.Mesh).isMesh) return
-    const mesh = child as THREE.Mesh
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-    mats.forEach(mat => { if (mat.name === 'Grass') applyGrassWind(mat) })
-  })
-}
-
 // ── vegetation material downgrade ────────────────────────────────────────────
 // MeshLambertMaterial compiles ~4× faster than MeshStandardMaterial on macOS Metal.
 // For a top-down view, the PBR→Phong quality difference is imperceptible on foliage.
 
-function toVegMaterial(src: THREE.Material): THREE.Material {
+function toVegMaterial(src: THREE.Material, windType?: WindType): THREE.Material {
   if (!(src instanceof THREE.MeshStandardMaterial)) return src
   const lamb = new THREE.MeshLambertMaterial({
     name:        src.name,
@@ -99,7 +41,7 @@ function toVegMaterial(src: THREE.Material): THREE.Material {
     blending:    src.blending,
     color:       src.color?.clone?.() ?? new THREE.Color(1, 1, 1),
   })
-  if (src.name === 'Grass') applyGrassWind(lamb as unknown as THREE.Material)
+  if (windType) applyWindByType(lamb as unknown as THREE.Material, windType)
   return lamb
 }
 
@@ -131,9 +73,10 @@ interface InstancedModelProps {
   instances: InstanceData[]
   castShadow?: boolean
   receiveShadow?: boolean
+  windType?: WindType
 }
 
-export function InstancedModel({ scene, instances, castShadow, receiveShadow }: InstancedModelProps) {
+export function InstancedModel({ scene, instances, castShadow, receiveShadow, windType }: InstancedModelProps) {
   const meshes = useMemo<MeshData[]>(() => {
     const s = scene.clone(true)
     s.position.set(0, 0, 0)
@@ -147,7 +90,9 @@ export function InstancedModel({ scene, instances, castShadow, receiveShadow }: 
       if (mesh.isMesh) {
         // Downgrade PBR to Lambert for all vegetation — faster shader compilation.
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-        mesh.material = mats.length === 1 ? toVegMaterial(mats[0]) : mats.map(toVegMaterial)
+        mesh.material = mats.length === 1
+          ? toVegMaterial(mats[0], windType)
+          : mats.map(m => toVegMaterial(m, windType))
         list.push({
           geometry: mesh.geometry,
           material: mesh.material,
@@ -156,7 +101,7 @@ export function InstancedModel({ scene, instances, castShadow, receiveShadow }: 
       }
     })
     return list
-  }, [scene])
+  }, [scene, windType])
 
   const meshRefs = useRef<(THREE.InstancedMesh | null)[]>([])
 
@@ -289,10 +234,6 @@ export function Scatter({
   const { scene: gl  } = useGLTF(`${BASE}Grass_Large.gltf`)   as GLTF
   const { scene: fl  } = useGLTF(`${BASE}Flower_1_Clump.gltf`) as GLTF
 
-  useMemo(() => {
-    applyWindToGrassScene(gl)
-  }, [gl])
-
   const shadowTex = useMemo(() => makeBlobTexture(), [])
   const shadowGeo = useMemo(() => new THREE.CircleGeometry(1, 16), [])
   const shadowMat = useMemo(() => new THREE.MeshBasicMaterial({
@@ -329,23 +270,24 @@ export function Scatter({
   }, [fieldSize])
 
   const allModels = useMemo(() => [
-    { key: 'b1', scene: b1 },
-    { key: 'm1', scene: m1 },
-    { key: 'd1', scene: d1 },
-    { key: 'bs', scene: bs }, { key: 'bsf', scene: bsf },
-    { key: 'gl', scene: gl },
-    { key: 'fl', scene: fl },
+    { key: 'b1',  scene: b1,  windType: 'tree'  as WindType },
+    { key: 'm1',  scene: m1,  windType: 'tree'  as WindType },
+    { key: 'd1',  scene: d1,  windType: 'dead'  as WindType },
+    { key: 'bs',  scene: bs,  windType: 'bush'  as WindType },
+    { key: 'bsf', scene: bsf, windType: 'bush'  as WindType },
+    { key: 'gl',  scene: gl,  windType: 'grass' as WindType },
+    { key: 'fl',  scene: fl,  windType: 'grass' as WindType },
   ], [b1, m1, d1, bs, bsf, gl, fl])
 
   const groupedInstances = useMemo(() => {
-    const groups = new Map<THREE.Object3D, InstanceData[]>()
-    allModels.forEach(m => groups.set(m.scene, []))
+    const groups = new Map<THREE.Object3D, { list: InstanceData[]; windType: WindType }>()
+    allModels.forEach(m => groups.set(m.scene, { list: [], windType: m.windType }))
     instances.forEach(inst => {
-      const list = groups.get(inst.src)
-      if (list) list.push({ x: inst.x, z: inst.z, ry: inst.ry, s: inst.s })
+      const g = groups.get(inst.src)
+      if (g) g.list.push({ x: inst.x, z: inst.z, ry: inst.ry, s: inst.s })
     })
     return allModels
-      .map(m => ({ key: m.key, scene: m.scene, list: groups.get(m.scene) ?? [] }))
+      .map(m => ({ key: m.key, scene: m.scene, windType: m.windType, list: groups.get(m.scene)?.list ?? [] }))
       .filter(g => g.list.length > 0)
   }, [instances, allModels])
 
@@ -369,9 +311,7 @@ export function Scatter({
   useEffect(() => { shadowMat.opacity = blobOpacity }, [shadowMat, blobOpacity])
 
   useFrame(({ clock }) => {
-    grassWindUniforms.uTime.value         = clock.getElapsedTime()
-    grassWindUniforms.uWindSpeed.value    = windSpeed
-    grassWindUniforms.uWindStrength.value = windStrength
+    tickWind(clock.getElapsedTime(), windSpeed, windStrength)
   })
 
   return (
@@ -386,6 +326,7 @@ export function Scatter({
           key={group.key}
           scene={group.scene}
           instances={group.list}
+          windType={group.windType}
           castShadow={usePCSS}
           receiveShadow={usePCSS}
         />

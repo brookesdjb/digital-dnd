@@ -6,7 +6,8 @@ import { useFrame } from '@react-three/fiber'
 import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { GLTF } from 'three-stdlib'
-import { applyWindToGrassScene, InstancedModel } from './Scatter'
+import { InstancedModel } from './Scatter'
+import { applyWindByType, type WindType } from './wind'
 import type { PlacedObject, ShadowType } from '@dnd-table/types'
 
 // ── asset catalog ─────────────────────────────────────────────────────────────
@@ -128,27 +129,42 @@ function InstancedRockAsset({ path, instances, castShadow }: InstancedAssetProps
   )
 }
 
-const FOLIAGE_MAT = new THREE.MeshLambertMaterial({ color: 0x6fa33c })
+function shadowTypeToWindType(st: string): WindType {
+  if (st === 'tree') return 'tree'
+  if (st === 'dead') return 'dead'
+  if (st === 'bush') return 'bush'
+  return 'grass'
+}
 
 function InstancedFoliageAsset({ path, instances, castShadow }: InstancedAssetProps) {
   const { scene } = useGLTF(path) as GLTF
 
+  const windType = shadowTypeToWindType(
+    OBJECT_CATALOG.find(e => e.path === path)?.shadowType ?? 'cover'
+  )
+
   const modifiedScene = useMemo(() => {
     const c = scene.clone(true)
+    // Create a per-path MeshLambertMaterial for untextured (FBX pack) meshes,
+    // with the correct wind profile already injected.
+    const foliageMat = new THREE.MeshLambertMaterial({ color: 0x6fa33c })
+    applyWindByType(foliageMat as unknown as THREE.Material, windType)
     c.traverse(child => {
       const mesh = child as THREE.Mesh
       if (mesh.isMesh && !(mesh.material as THREE.MeshStandardMaterial)?.map) {
-        mesh.material = FOLIAGE_MAT
+        mesh.material = foliageMat
       }
     })
-    applyWindToGrassScene(c)
     return c
+  // windType is derived from path, so path alone is sufficient as dep here
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene])
 
   return (
     <InstancedModel
       scene={modifiedScene}
       instances={instances}
+      windType={windType}
       castShadow={castShadow}
       receiveShadow={castShadow}
     />
