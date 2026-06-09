@@ -320,7 +320,7 @@ The R3F terrain editor PoC: painted textures, 3D model placement, grid, rain, sc
 - [x] Control client loads scene state from DB on mount (creates default scene if none exists)
 - [x] Replace local JSON save/load with DB read/write
 - [x] `docker-compose.yml`: Supabase stack (postgres, PostgREST, Realtime, nginx) + Next.js container
-- [ ] `/setup`: list existing sessions per user — deferred to M4 with scene list UI
+- [x] `/setup`: list existing sessions per user — session list with Open/Display links and delete, scrollable with `+ new table` toggle
 - [x] Supabase Storage: map image upload — implemented in M4 via `useAssets` + `map-assets` bucket
 
 ---
@@ -504,7 +504,7 @@ The existing 8s re-broadcast from `useScenePublish` remains as a drift-correctio
 
 ### Future work (not yet implemented)
 
-- [ ] **Lazy texture loading**: only call `useTexture` for road layers that have non-empty masks. Reduces control-route memory from ~750MB to proportional to how many textures are actually painted.
+- [x] **Lazy texture loading**: only call `useTexture` for road layers that have non-empty masks. Reduces control-route memory from ~750MB to proportional to how many textures are actually painted.
 - [ ] **Reduce shadow map size**: test 1024×1024 — at TV viewing distance from above, 2048×2048 PCF overhead may not be worth the quality gain.
 - [ ] **`frameloop="demand"`**: since the scene is nearly static (only grass wind moves), switch from `frameloop="always"` to `frameloop="demand"` with `invalidate()` on wind ticks. Eliminates GPU load when idle.
 - [ ] **Baked ground real-time sync**: add `BAKED_TERRAIN_UPDATED` Realtime event so display updates immediately when DM saves, without needing a scene switch or page reload.

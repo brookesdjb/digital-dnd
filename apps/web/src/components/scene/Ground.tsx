@@ -65,7 +65,7 @@ export const ROAD_TEXTURES = [
 export const ROAD_TEXTURE_LABELS = ROAD_TEXTURES.map(t => t.label)
 
 const N = ROAD_TEXTURES.length
-const ALL_ROAD_PATHS = ROAD_TEXTURES.flatMap(t => [t.color, t.rough, t.normal])
+
 
 // ── save / load helpers ───────────────────────────────────────────────────────
 
