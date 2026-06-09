@@ -32,6 +32,11 @@ export interface SceneState {
   firefliesIntensity?: number
   ashIntensity?:       number
   lightningIntensity?: number
+  scatterSeed?:          number
+  scatterEnabled?:       boolean
+  scatterDensityScale?:  number
+  scatterErasedIndices?: number[]
+  baseTexture?:          string
 }
 
 export type MapRotation = 0 | 90 | 180 | 270

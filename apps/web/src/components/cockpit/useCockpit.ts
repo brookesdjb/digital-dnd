@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { OBJECT_CATALOG } from '@/components/scene/ObjectPainter'
-import { ROAD_TEXTURE_LABELS } from '@/components/scene/Ground'
+import { ROAD_TEXTURE_LABELS, DEFAULT_BASE_TEXTURE } from '@/components/scene/Ground'
 import { SCREEN_SIZE_LABELS } from '@/components/scene/BattleGrid'
 
 export type CockpitTool = 'select' | 'fog' | 'object' | 'road' | 'image'
@@ -30,6 +30,16 @@ export interface CockpitRoad {
   brush: number
   opacity: number
   erase: boolean
+  baseTexture: string  // BASE_TEXTURE_LABELS entry
+}
+
+export interface CockpitScatter {
+  seed: number
+  enabled: boolean
+  densityScale: number
+  eraseMode: boolean
+  eraseBrushSize: number
+  erasedIndices: number[]
 }
 
 export interface CockpitLight {
@@ -87,6 +97,7 @@ export interface CockpitState {
   grass:   CockpitGrass
   view:    CockpitView
   shadows: CockpitShadows
+  scatter: CockpitScatter
   setTool:    (t: CockpitTool) => void
   setPaused:  (p: boolean) => void
   setFog:     (p: Partial<CockpitFog>) => void
@@ -97,6 +108,7 @@ export interface CockpitState {
   setGrass:   (p: Partial<CockpitGrass>) => void
   setView:    (p: Partial<CockpitView>) => void
   setShadows: (p: Partial<CockpitShadows>) => void
+  setScatter: (p: Partial<CockpitScatter>) => void
 }
 
 export interface LightPreset {
@@ -176,6 +188,11 @@ export function useCockpit(overrides?: CockpitOverrides): CockpitState {
   })
   const [road, _setRoad] = useState<CockpitRoad>({
     texture: ROAD_TEXTURE_LABELS[0], brush: 3, opacity: 1.0, erase: false,
+    baseTexture: DEFAULT_BASE_TEXTURE,
+  })
+  const [scatter, _setScatter] = useState<CockpitScatter>({
+    seed: 0x5CA77E8D, enabled: true,
+    densityScale: 1.0, eraseMode: false, eraseBrushSize: 2, erasedIndices: [],
   })
   const [light, _setLight] = useState<CockpitLight>({ ...DAY, preset: DAY.id, ...overrides?.light })
   const [weather, _setWeather] = useState<CockpitWeather>({
@@ -200,7 +217,7 @@ export function useCockpit(overrides?: CockpitOverrides): CockpitState {
   }, [object.model])
 
   return {
-    tool, paused, fog, object, road, light, weather, grass, view, shadows,
+    tool, paused, fog, object, road, light, weather, grass, view, shadows, scatter,
     setTool, setPaused,
     setFog:     patch(_setFog),
     setObject:  patch(_setObject),
@@ -210,5 +227,6 @@ export function useCockpit(overrides?: CockpitOverrides): CockpitState {
     setGrass:   patch(_setGrass),
     setView:    patch(_setView),
     setShadows: patch(_setShadows),
+    setScatter: patch(_setScatter),
   }
 }

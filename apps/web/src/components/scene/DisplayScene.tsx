@@ -128,6 +128,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
     embersIntensity, dustIntensity, snowIntensity, mistIntensity, firefliesIntensity, ashIntensity, lightningIntensity,
     bakedGround, mapImages,
     isConnected,
+    scatterSeed, scatterEnabled, scatterDensityScale, scatterErasedIndices, baseTexture,
   } = useSceneSync(tableId, groundIO, fogIO)
 
   const fieldSize = Math.ceil(Math.max(screenW, screenH)) + 8
@@ -194,6 +195,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
                 brushOpacity={1}
                 eraseMode={false}
                 selectedTexture={ROAD_TEXTURE_LABELS[0]}
+                baseTexture={baseTexture}
                 ioRef={groundIO}
               />
           }
@@ -205,6 +207,10 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
             blobSize={blobSize}
             blobOpacity={blobOpacity}
             fieldSize={fieldSize}
+            seed={scatterSeed}
+            enabled={scatterEnabled}
+            densityScale={scatterDensityScale}
+            erasedIndices={scatterErasedIndices}
           />
           <FogLayer
             paintMode={false}

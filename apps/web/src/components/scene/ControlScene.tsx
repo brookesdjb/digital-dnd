@@ -79,6 +79,16 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
 
   const c = useCockpit(presetOverride ?? undefined)
 
+  // Ref-based erase callback so pointer handler doesn't go stale between renders.
+  const scatterErasedRef = useRef<number[]>([])
+  useEffect(() => { scatterErasedRef.current = c.scatter.erasedIndices }, [c.scatter.erasedIndices])
+  const handleEraseSeeded = useCallback((idxs: number[]) => {
+    const next = [...new Set([...scatterErasedRef.current, ...idxs])]
+    scatterErasedRef.current = next
+    c.setScatter({ erasedIndices: next })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Save timestamp for the "Saved X ago" chip
   const [savedAt, setSavedAt] = useState(Date.now() - 42000)
   const [savedFlash, setSavedFlash] = useState(false)
@@ -232,6 +242,11 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
       windStrength:      c.grass.windStrength,
       fowColor:          c.fog.color,
       fowDisplayOpacity: c.fog.playerOpacity,
+      scatterSeed:         c.scatter.seed,
+      scatterEnabled:      c.scatter.enabled,
+      scatterDensityScale: c.scatter.densityScale,
+      scatterErasedIndices: c.scatter.erasedIndices,
+      baseTexture:         c.road.baseTexture,
       embersIntensity:    c.weather.embers,
       dustIntensity:      c.weather.dust,
       snowIntensity:      c.weather.snow,
@@ -246,6 +261,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   }, [
     c.view.grid, c.weather, c.light, c.shadows, c.grass,
     c.fog.color, c.fog.playerOpacity,
+    c.scatter, c.road.baseTexture,
     schedulePublishState, setSceneState, scheduleStateSave,
   ])
 
@@ -287,6 +303,11 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     c.setGrass({ windSpeed: loadedSceneState.windSpeed, windStrength: loadedSceneState.windStrength })
     c.setFog({ color: loadedSceneState.fowColor, playerOpacity: loadedSceneState.fowDisplayOpacity })
     c.setView({ grid: loadedSceneState.showGrid, gridLineWidth: loadedSceneState.gridLineWidth ?? 1.0 })
+    if (loadedSceneState.scatterSeed          !== undefined) c.setScatter({ seed:          loadedSceneState.scatterSeed })
+    if (loadedSceneState.scatterEnabled       !== undefined) c.setScatter({ enabled:       loadedSceneState.scatterEnabled })
+    if (loadedSceneState.scatterDensityScale  !== undefined) c.setScatter({ densityScale:  loadedSceneState.scatterDensityScale })
+    if (loadedSceneState.scatterErasedIndices !== undefined) c.setScatter({ erasedIndices: loadedSceneState.scatterErasedIndices })
+    if (loadedSceneState.baseTexture          !== undefined) c.setRoad({ baseTexture: loadedSceneState.baseTexture })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedSceneState])
 
@@ -343,8 +364,9 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const paintMode      = c.tool === 'road'
   const imagePaintMode = c.tool === 'image'
 
-  const painting = paintMode || objectPaintMode || fogPaintMode || imagePaintMode
-  const cursor   = (paintMode || objectPaintMode || fogPaintMode) ? 'none' : 'auto'
+  const scatterEraseMode = c.scatter.eraseMode && c.scatter.enabled
+  const painting = paintMode || objectPaintMode || fogPaintMode || imagePaintMode || scatterEraseMode
+  const cursor   = (paintMode || objectPaintMode || fogPaintMode || scatterEraseMode) ? 'none' : 'auto'
 
   return (
     <div style={{ width: '100%', height: '100%', background: c.light.bgColor, cursor }}>
@@ -386,6 +408,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
             brushOpacity={c.road.opacity}
             eraseMode={c.road.erase}
             selectedTexture={c.road.texture}
+            baseTexture={c.road.baseTexture}
             ioRef={groundIO}
             onChange={onTerrainChange}
           />
@@ -397,6 +420,13 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
             blobSize={c.shadows.blobSize}
             blobOpacity={c.shadows.blobOpacity}
             fieldSize={fieldSize}
+            seed={c.scatter.seed}
+            enabled={c.scatter.enabled}
+            densityScale={c.scatter.densityScale}
+            erasedIndices={c.scatter.erasedIndices}
+            eraseMode={c.scatter.eraseMode}
+            eraseBrushSize={c.scatter.eraseBrushSize}
+            onEraseIndices={handleEraseSeeded}
           />
           <FogLayer
             paintMode={fogPaintMode}

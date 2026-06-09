@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { FogIO } from '@/components/scene/FogLayer'
 import type { PlacedObject, PlacedImage, SceneState } from '@dnd-table/types'
+import { DEFAULT_BASE_TEXTURE } from '@/components/scene/Ground'
 import { remoteLog } from '@/lib/log'
 
 export function useSceneSync(
@@ -50,6 +51,11 @@ export function useSceneSync(
   const [isPaused,          setIsPaused]          = useState(false)
   const [isConnected,       setIsConnected]       = useState(false)
   const [reconnectKey,      setReconnectKey]      = useState(0)
+  const [scatterSeed,          setScatterSeed]          = useState(0x5CA77E8D)
+  const [scatterEnabled,       setScatterEnabled]       = useState(true)
+  const [scatterDensityScale,  setScatterDensityScale]  = useState(1.0)
+  const [scatterErasedIndices, setScatterErasedIndices] = useState<number[]>([])
+  const [baseTexture,          setBaseTexture]          = useState(DEFAULT_BASE_TEXTURE)
 
   // Pending buffers handle the race where a Realtime message arrives before ioRefs mount.
   const pendingTerrain = useRef<string[] | null>(null)
@@ -87,6 +93,11 @@ export function useSceneSync(
     setFirefliesIntensity(s.firefliesIntensity ?? 0)
     setAshIntensity(s.ashIntensity ?? 0)
     setLightningIntensity(s.lightningIntensity ?? 0)
+    if (s.scatterSeed          !== undefined) setScatterSeed(s.scatterSeed)
+    if (s.scatterEnabled       !== undefined) setScatterEnabled(s.scatterEnabled)
+    if (s.scatterDensityScale  !== undefined) setScatterDensityScale(s.scatterDensityScale)
+    if (s.scatterErasedIndices !== undefined) setScatterErasedIndices(s.scatterErasedIndices)
+    if (s.baseTexture          !== undefined) setBaseTexture(s.baseTexture)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -280,6 +291,11 @@ export function useSceneSync(
         if (p.firefliesIntensity   !== undefined) setFirefliesIntensity(p.firefliesIntensity   as number)
         if (p.ashIntensity         !== undefined) setAshIntensity(p.ashIntensity         as number)
         if (p.lightningIntensity   !== undefined) setLightningIntensity(p.lightningIntensity   as number)
+        if (p.scatterSeed          !== undefined) setScatterSeed(p.scatterSeed             as number)
+        if (p.scatterEnabled       !== undefined) setScatterEnabled(p.scatterEnabled       as boolean)
+        if (p.scatterDensityScale  !== undefined) setScatterDensityScale(p.scatterDensityScale as number)
+        if (p.scatterErasedIndices !== undefined) setScatterErasedIndices(p.scatterErasedIndices as number[])
+        if (p.baseTexture          !== undefined) setBaseTexture(p.baseTexture             as string)
       })
       .subscribe((status) => {
         if (cancelled) return
@@ -324,5 +340,6 @@ export function useSceneSync(
     embersIntensity, dustIntensity, snowIntensity, mistIntensity, firefliesIntensity, ashIntensity, lightningIntensity,
     bakedGround, mapImages,
     isConnected,
+    scatterSeed, scatterEnabled, scatterDensityScale, scatterErasedIndices, baseTexture,
   }
 }

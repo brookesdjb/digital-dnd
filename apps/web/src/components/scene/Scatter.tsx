@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useEffect, useRef } from 'react'
+import { useMemo, useEffect, useRef, useCallback } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
+import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { GLTF } from 'three-stdlib'
 import { applyWindByType, tickWind, type WindType } from './wind'
@@ -207,6 +208,9 @@ function scatter(count: number, minDist: number, existing: ScatterPoint[], field
 
 // ── Scatter component ─────────────────────────────────────────────────────────
 
+const DEFAULT_SEED = 0x5CA77E8D
+const MAX_SCATTER_SHADOWS = 2000
+
 interface ScatterProps {
   windSpeed?: number
   windStrength?: number
@@ -215,6 +219,13 @@ interface ScatterProps {
   blobSize?: number
   blobOpacity?: number
   fieldSize?: number
+  seed?: number
+  enabled?: boolean
+  densityScale?: number
+  erasedIndices?: number[]
+  eraseMode?: boolean
+  eraseBrushSize?: number
+  onEraseIndices?: (idxs: number[]) => void
 }
 
 export function Scatter({
@@ -225,6 +236,13 @@ export function Scatter({
   blobSize     = 1.0,
   blobOpacity  = 1.0,
   fieldSize    = 27,
+  seed         = DEFAULT_SEED,
+  enabled      = true,
+  densityScale    = 1.0,
+  erasedIndices   = [],
+  eraseMode       = false,
+  eraseBrushSize  = 2,
+  onEraseIndices,
 }: ScatterProps) {
   const { scene: b1  } = useGLTF(`${BASE}BirchTree_1.gltf`)   as GLTF
   const { scene: m1  } = useGLTF(`${BASE}MapleTree_1.gltf`)   as GLTF
@@ -248,8 +266,8 @@ export function Scatter({
   type InstanceType = ScatterPoint & { type: string; src: THREE.Object3D; s: number }
 
   const instances = useMemo<InstanceType[]>(() => {
-    const rng    = seededRng(0x5CA77E8D)  // fixed seed — same result on control and display
-    const scale  = Math.max(1, fieldSize / 27)
+    const rng    = seededRng(seed)
+    const scale  = Math.max(1, fieldSize / 27) * Math.max(0.05, densityScale)
     const nTree  = Math.round(16 * scale)
     const nDead  = Math.round(6  * scale)
     const nBush  = Math.round(30 * scale)
@@ -267,7 +285,7 @@ export function Scatter({
       ...coverPts.map((p, i) => ({ ...p, type: 'cover', src: coverVariants[i % coverVariants.length], s: 0.9  + rng() * 0.5  })),
     ]
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fieldSize])
+  }, [fieldSize, seed, densityScale])
 
   const allModels = useMemo(() => [
     { key: 'b1',  scene: b1,  windType: 'tree'  as WindType },
@@ -279,17 +297,24 @@ export function Scatter({
     { key: 'fl',  scene: fl,  windType: 'grass' as WindType },
   ], [b1, m1, d1, bs, bsf, gl, fl])
 
+  const erasedSet = useMemo(() => new Set(erasedIndices), [erasedIndices])
+
+  const visibleInstances = useMemo(
+    () => erasedSet.size > 0 ? instances.filter((_, i) => !erasedSet.has(i)) : instances,
+    [instances, erasedSet],
+  )
+
   const groupedInstances = useMemo(() => {
     const groups = new Map<THREE.Object3D, { list: InstanceData[]; windType: WindType }>()
     allModels.forEach(m => groups.set(m.scene, { list: [], windType: m.windType }))
-    instances.forEach(inst => {
+    visibleInstances.forEach(inst => {
       const g = groups.get(inst.src)
       if (g) g.list.push({ x: inst.x, z: inst.z, ry: inst.ry, s: inst.s })
     })
     return allModels
       .map(m => ({ key: m.key, scene: m.scene, windType: m.windType, list: groups.get(m.scene)?.list ?? [] }))
       .filter(g => g.list.length > 0)
-  }, [instances, allModels])
+  }, [visibleInstances, allModels])
 
   const shadowRef = useRef<THREE.InstancedMesh>(null)
 
@@ -297,7 +322,7 @@ export function Scatter({
     const mesh = shadowRef.current
     if (!mesh) return
     const dummy = new THREE.Object3D()
-    instances.forEach((inst, i) => {
+    visibleInstances.forEach((inst, i) => {
       dummy.position.set(inst.x, 0.02, inst.z)
       dummy.rotation.set(-Math.PI / 2, 0, 0)
       const scale = inst.s * SHADOW_SCALE[inst.type] * blobSize
@@ -306,21 +331,90 @@ export function Scatter({
       mesh.setMatrixAt(i, dummy.matrix)
     })
     mesh.instanceMatrix.needsUpdate = true
-  }, [instances, blobSize])
+    mesh.count = visibleInstances.length
+  }, [visibleInstances, blobSize])
 
   useEffect(() => { shadowMat.opacity = blobOpacity }, [shadowMat, blobOpacity])
+
+  const isPainting   = useRef(false)
+  const eraseCursorRef = useRef<THREE.Mesh>(null)
+  const eraseCursorPos = useRef(new THREE.Vector3())
+
+  useEffect(() => {
+    const stop = () => { isPainting.current = false }
+    window.addEventListener('pointerup', stop)
+    return () => window.removeEventListener('pointerup', stop)
+  }, [])
+
+  const collectErased = useCallback((px: number, pz: number) => {
+    const r2 = eraseBrushSize * eraseBrushSize
+    const hit = instances.reduce<number[]>((acc, inst, i) => {
+      const dx = inst.x - px, dz = inst.z - pz
+      if (dx * dx + dz * dz <= r2 && !erasedSet.has(i)) acc.push(i)
+      return acc
+    }, [])
+    if (hit.length > 0) onEraseIndices?.(hit)
+  }, [instances, erasedSet, eraseBrushSize, onEraseIndices])
+
+  const handleEraseDown = useCallback((e: ThreeEvent<PointerEvent>) => {
+    if (!eraseMode) return
+    e.stopPropagation()
+    isPainting.current = true
+    collectErased(e.point.x, e.point.z)
+  }, [eraseMode, collectErased])
+
+  const handleEraseMove = useCallback((e: ThreeEvent<PointerEvent>) => {
+    if (!eraseMode) return
+    e.stopPropagation()
+    eraseCursorPos.current.copy(e.point)
+    if (isPainting.current) collectErased(e.point.x, e.point.z)
+  }, [eraseMode, collectErased])
+
+  useFrame(() => {
+    if (!eraseCursorRef.current) return
+    eraseCursorRef.current.visible = eraseMode && enabled
+    if (eraseMode) {
+      eraseCursorRef.current.position.set(eraseCursorPos.current.x, 0.05, eraseCursorPos.current.z)
+      eraseCursorRef.current.scale.set(eraseBrushSize, eraseBrushSize, 1)
+    }
+  })
 
   useFrame(({ clock }) => {
     tickWind(clock.getElapsedTime(), windSpeed, windStrength)
   })
 
+  if (!enabled) return null
+
   return (
     <>
       <instancedMesh
         ref={shadowRef}
-        args={[shadowGeo, shadowMat, instances.length]}
+        args={[shadowGeo, shadowMat, MAX_SCATTER_SHADOWS]}
         visible={showBlobs}
       />
+
+      {/* Transparent hit mesh for erase mode */}
+      {eraseMode && (
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, 0.03, 0]}
+          onPointerDown={handleEraseDown}
+          onPointerMove={handleEraseMove}
+        >
+          <planeGeometry args={[80, 80]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
+
+      <mesh ref={eraseCursorRef} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
+        <ringGeometry args={[0.88, 1, 64]} />
+        <meshBasicMaterial
+          color="#ff6633"
+          transparent opacity={0.85}
+          depthTest={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
       {groupedInstances.map(group => (
         <InstancedModel
           key={group.key}

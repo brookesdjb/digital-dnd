@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react'
 import { Slider, Toggle, Segmented, Btn, FieldRow, ColorDots, TextureSwatch, LightPresets, Icons } from './primitives'
 import type { CockpitState } from './useCockpit'
 import { OBJECT_CATALOG } from '@/components/scene/ObjectPainter'
-import { ROAD_TEXTURES, ROAD_TEXTURE_LABELS } from '@/components/scene/Ground'
+import { ROAD_TEXTURES, ROAD_TEXTURE_LABELS, BASE_TEXTURES, BASE_TEXTURE_LABELS } from '@/components/scene/Ground'
 import { SCREEN_SIZE_LABELS } from '@/components/scene/BattleGrid'
 import type { SceneRow } from '@/lib/sync/useSceneDB'
 import type { AssetRecord } from '@/lib/useAssets'
@@ -64,6 +64,7 @@ const MODEL_SWATCH: Record<string, string> = {
 
 // Texture swatch colours (approximation from filenames)
 const TEX_SWATCHES: Record<string, [string, string]> = {
+  'Natural Grass':    ['#5a7a3c', '#3d5828'],
   'Ground Stones 02': ['#8f8a7f', '#69655c'],
   'Ground Stones 01': ['#807c73', '#5d5a52'],
   'Ground 02':        ['#7c5a3c', '#5e4329'],
@@ -122,12 +123,40 @@ export function FogControls({ c, actions }: { c: CockpitState; actions: PanelAct
 // ── ObjectControls ─────────────────────────────────────────────────────────────
 
 export function ObjectControls({ c, actions }: { c: CockpitState; actions: PanelActions }) {
-  const { object, setObject } = c
+  const { object, setObject, scatter, setScatter } = c
   const [cat, setCat] = useState<keyof typeof MODEL_CATEGORIES>('Trees')
   const models = MODEL_CATEGORIES[cat]
 
+  const rerollSeed = () => setScatter({ seed: (Math.random() * 0x100000000) >>> 0, erasedIndices: [] })
+
   return (
     <div className="ck-stack">
+      <span className="ck-sub-head">Seeded vegetation</span>
+      <Toggle label="Enabled" sub="Auto-scatter trees, bushes, grass"
+        checked={scatter.enabled} onChange={v => setScatter({ enabled: v })} />
+      {scatter.enabled && (
+        <>
+          <Slider label="Density" value={scatter.densityScale} min={0.1} max={3} step={0.1}
+            onChange={v => setScatter({ densityScale: v })} fmt={v => v.toFixed(1) + '×'} />
+          <div className="ck-btn-row">
+            <Btn variant="ghost" full icon={Icons.sync} onClick={rerollSeed}>Re-roll seed</Btn>
+            <Btn variant={scatter.eraseMode ? 'solid' : 'ghost'} full icon={Icons.erase}
+              onClick={() => setScatter({ eraseMode: !scatter.eraseMode })}>
+              {scatter.eraseMode ? 'Erasing…' : 'Erase'}
+            </Btn>
+          </div>
+          {scatter.eraseMode && (
+            <Slider label="Brush size" value={scatter.eraseBrushSize} min={0.5} max={10} step={0.5}
+              onChange={v => setScatter({ eraseBrushSize: v })} fmt={v => v.toFixed(1)} />
+          )}
+          {scatter.erasedIndices.length > 0 && (
+            <Btn variant="ghost" full icon={Icons.sync}
+              onClick={() => setScatter({ erasedIndices: [] })}>
+              Restore erased ({scatter.erasedIndices.length})
+            </Btn>
+          )}
+        </>
+      )}
       {/* Category tabs */}
       <div className="ck-mp">
         <div className="ck-mp-tabs">
@@ -178,6 +207,19 @@ export function RoadControls({ c }: { c: CockpitState }) {
   const { road, setRoad } = c
   return (
     <div className="ck-stack">
+      <span className="ck-sub-head">Base layer</span>
+      <div className="ck-tex-grid">
+        {BASE_TEXTURE_LABELS.map(label => {
+          const sw = TEX_SWATCHES[label] ?? ['#807c73', '#5d5a52']
+          return (
+            <TextureSwatch key={label} name={label} c1={sw[0]} c2={sw[1]}
+              active={road.baseTexture === label}
+              onClick={() => setRoad({ baseTexture: label })} />
+          )
+        })}
+      </div>
+      <span className="ck-tex-name">{road.baseTexture}</span>
+      <span className="ck-sub-head">Overlay paint</span>
       <div className="ck-tex-grid">
         {ROAD_TEXTURE_LABELS.map(label => {
           const sw = TEX_SWATCHES[label] ?? ['#807c73', '#5d5a52']

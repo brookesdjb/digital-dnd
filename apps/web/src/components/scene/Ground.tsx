@@ -11,6 +11,24 @@ const MASK_SIZE   = 512
 const ROAD_ROT    = [-Math.PI / 2, 0, 0] as const
 const ROAD_REPEAT = 20
 
+export const BASE_TEXTURES = [
+  { label: 'Natural Grass', colorPath: '/textures/moss_ground_03_2k/moss_groud_03_Base_Color_2k.png' },
+  { label: 'Ground Stones 02', colorPath: '/textures/ground_stones_02_2k/ground_stones_02_basecolor_2k.png' },
+  { label: 'Ground Stones 01', colorPath: '/textures/ground_stones_01_2k/ground_stones_01_baseColor_2k.png' },
+  { label: 'Ground 02',        colorPath: '/textures/ground_02_2k/ground_02_color_2k.png' },
+  { label: 'Ground 03',        colorPath: '/textures/ground_03_2k/ground_03_color_2k.png' },
+  { label: 'Ground 06',        colorPath: '/textures/ground_06_2k/ground_06_baseColor_2k.png' },
+  { label: 'Ground Tiles 04',  colorPath: '/textures/ground_tiles_04_2k/ground_tiles_04_color_2k.png' },
+  { label: 'Ground Tiles 12',  colorPath: '/textures/ground_tiles_12_2k/ground_tiles_12_baseColor_2k.png' },
+  { label: 'Ground Tiles 22',  colorPath: '/textures/ground_tiles_22_2k/ground_tiles_22_baseColor_2k.png' },
+  { label: 'Desert Ground',    colorPath: '/textures/desert_ground_01_2k/desert_ground_01_baseColor_2k.png' },
+  { label: 'Moss Ground',      colorPath: '/textures/moss_ground_02_2k/moss_groud_02_Base_Color_2k.png' },
+  { label: 'Rocks & Water',    colorPath: '/textures/rocks_with_water_01_2k/rocks_with_water_01_color_2k.png' },
+  { label: 'Wood Planks',      colorPath: '/textures/wood_planks_with_sand_01_2k/wood_planks_with_sand_01_color_2k.png' },
+]
+export const BASE_TEXTURE_LABELS = BASE_TEXTURES.map(t => t.label)
+export const DEFAULT_BASE_TEXTURE = 'Natural Grass'
+
 export const ROAD_TEXTURES = [
   { label: 'Ground Stones 02',
     color:  '/textures/ground_stones_02_2k/ground_stones_02_basecolor_2k.png',
@@ -171,7 +189,7 @@ function bakeGround(
   gl:                  THREE.WebGLRenderer,
   masks:               Mask[],
   roadTexturesByLayer: (THREE.Texture[] | null)[],
-  grassColor:          THREE.Texture,
+  grassColor:          THREE.Texture | null,
   lighting:            BakeLighting,
 ): Promise<string> {
   const rt = new THREE.WebGLRenderTarget(BAKE_SIZE, BAKE_SIZE, {
@@ -203,7 +221,7 @@ function bakeGround(
   bakeScene.add(sun)
 
   // Grass base — Lambert matches the live scene material (no PBR on grass).
-  const grassMat  = new THREE.MeshLambertMaterial({ map: grassColor })
+  const grassMat  = new THREE.MeshLambertMaterial({ map: grassColor ?? undefined })
   const grassMesh = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE), grassMat)
   grassMesh.rotation.copy(ROT)
   bakeScene.add(grassMesh)
@@ -353,6 +371,33 @@ function RoadOverlay({ texDef, mask, receiveShadow, index, onReady }: RoadOverla
   )
 }
 
+// ── BaseLayer ─────────────────────────────────────────────────────────────────
+// Inner component so useTexture can be called with a dynamic path inside Suspense.
+
+interface BaseLayerProps {
+  colorPath:     string
+  receiveShadow: boolean
+  onReady:       (tex: THREE.Texture) => void
+}
+
+function BaseLayer({ colorPath, receiveShadow, onReady }: BaseLayerProps) {
+  const tex = useTexture(colorPath)
+  useMemo(() => {
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.repeat.set(12, 12)
+    tex.needsUpdate = true
+    onReady(tex)
+  // onReady is a stable callback — safe to omit
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tex])
+  return (
+    <mesh rotation={ROAD_ROT} position={[0, -0.02, 0]} receiveShadow={receiveShadow}>
+      <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
+      <meshLambertMaterial map={tex} />
+    </mesh>
+  )
+}
+
 // ── component ─────────────────────────────────────────────────────────────────
 
 interface GroundProps {
@@ -362,12 +407,13 @@ interface GroundProps {
   brushOpacity: number
   eraseMode: boolean
   selectedTexture: string
+  baseTexture?: string
   ioRef?: React.MutableRefObject<GroundIO | undefined>
   onChange?: () => void
 }
 
 export function Ground({
-  receiveShadow, paintMode, brushRadius, brushOpacity, eraseMode, selectedTexture, ioRef, onChange,
+  receiveShadow, paintMode, brushRadius, brushOpacity, eraseMode, selectedTexture, baseTexture, ioRef, onChange,
 }: GroundProps) {
   const { gl } = useThree()
 
@@ -416,12 +462,13 @@ export function Ground({
     })
   }, [selectedTexture])
 
-  const grassColor = useTexture('/textures/moss_ground_03_2k/moss_groud_03_Base_Color_2k.png')
+  const baseTexRef    = useRef<THREE.Texture | null>(null)
+  const onBaseReady   = useCallback((tex: THREE.Texture) => { baseTexRef.current = tex }, [])
 
-  useMemo(() => {
-    grassColor.wrapS = grassColor.wrapT = THREE.RepeatWrapping
-    grassColor.repeat.set(12, 12)
-  }, [grassColor])
+  const baseColorPath = useMemo(() => {
+    const found = BASE_TEXTURES.find(t => t.label === baseTexture)
+    return (found ?? BASE_TEXTURES[0]).colorPath
+  }, [baseTexture])
 
   useEffect(() => {
     if (!ioRef) return
@@ -437,11 +484,11 @@ export function Ground({
           return false
         }))
       },
-      bake: (lighting) => bakeGround(gl, masks, roadTextureRefs.current, grassColor, lighting),
+      bake: (lighting) => bakeGround(gl, masks, roadTextureRefs.current, baseTexRef.current, lighting),
     }
-  // roadTextureRefs is a stable ref — reading .current at call time, no dep needed.
+  // roadTextureRefs and baseTexRef are stable refs — reading .current at call time.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ioRef, masks, gl, grassColor])
+  }, [ioRef, masks, gl])
 
   const doPaint = useCallback((uv: THREE.Vector2) => {
     if (eraseMode) {
@@ -484,10 +531,9 @@ export function Ground({
 
   return (
     <>
-      <mesh rotation={ROAD_ROT} position={[0, -0.02, 0]} receiveShadow={receiveShadow}>
-        <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
-        <meshLambertMaterial map={grassColor} />
-      </mesh>
+      <Suspense fallback={null}>
+        <BaseLayer colorPath={baseColorPath} receiveShadow={receiveShadow} onReady={onBaseReady} />
+      </Suspense>
 
       {ROAD_TEXTURES.map((def, i) => (
         activeLayers[i] ? (
