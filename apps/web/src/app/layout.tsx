@@ -15,6 +15,8 @@ const spaceMono = Space_Mono({
   display: 'swap',
 })
 
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'D&D Table',
 }
