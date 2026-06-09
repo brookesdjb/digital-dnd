@@ -11,6 +11,8 @@ import { Scatter } from './Scatter'
 import { Ground, ROAD_TEXTURE_LABELS } from './Ground'
 import type { GroundIO } from './Ground'
 import { BattleGrid } from './BattleGrid'
+import { FogLayer } from './FogLayer'
+import type { FogIO } from './FogLayer'
 import { PlacedObjectsRenderer } from './PlacedObjectsRenderer'
 import { useSceneSync } from '@/lib/sync/useSceneSync'
 
@@ -22,6 +24,7 @@ interface DisplaySceneProps {
 
 export default function DisplayScene({ tableId }: DisplaySceneProps) {
   const groundIO = useRef<GroundIO>(undefined)
+  const fogIO    = useRef<FogIO>(undefined)
   const {
     objects, screenW, screenH,
     bgColor, rainIntensity, showGrid,
@@ -30,7 +33,8 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
     fogEnabled, fogColor, fogDensity,
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
-  } = useSceneSync(tableId, groundIO)
+    fowColor, fowDisplayOpacity,
+  } = useSceneSync(tableId, groundIO, fogIO)
 
   const fieldSize = Math.ceil(Math.max(screenW, screenH)) + 8
   const initH     = screenH / (2 * Math.tan((DEFAULT_FOV * Math.PI / 180) / 2))
@@ -95,6 +99,15 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
             blobSize={blobSize}
             blobOpacity={blobOpacity}
             fieldSize={fieldSize}
+          />
+          <FogLayer
+            paintMode={false}
+            eraseMode={false}
+            tool="brush"
+            brushRadius={4}
+            fogColor={fowColor}
+            opacity={fowDisplayOpacity}
+            ioRef={fogIO}
           />
           <BattleGrid
             screenW={screenW}

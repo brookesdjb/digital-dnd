@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { ObjectsIO } from '@/components/scene/ObjectPainter'
+import type { FogIO } from '@/components/scene/FogLayer'
 
 const DEBOUNCE_MS = 500
 
@@ -9,6 +10,7 @@ export function useSceneDB(
   tableId: string,
   groundIO: React.RefObject<GroundIO | undefined>,
   objectsIO: React.RefObject<ObjectsIO | undefined>,
+  fogIO: React.RefObject<FogIO | undefined>,
 ) {
   const sceneIdRef  = useRef<string | null>(null)
   const saveTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -35,11 +37,11 @@ export function useSceneDB(
       setScreenW(Number(table.screen_w_in))
       setScreenH(Number(table.screen_h_in))
 
-      let scene: { id: string; terrain: unknown; objects: unknown; bg_color: string | null } | null = null
+      let scene: { id: string; terrain: unknown; objects: unknown; bg_color: string | null; fog_mask: string | null } | null = null
       if (table.active_scene_id) {
         const { data: sceneData, error: sceneError } = await supabase
           .from('scene')
-          .select('id, terrain, objects, bg_color')
+          .select('id, terrain, objects, bg_color, fog_mask')
           .eq('id', table.active_scene_id)
           .single()
         if (sceneError) console.error('useSceneDB: scene fetch', sceneError)
@@ -84,6 +86,9 @@ export function useSceneDB(
       if (objects && objectsIO.current) {
         objectsIO.current.load(objects as Parameters<ObjectsIO['load']>[0])
       }
+      if (scene.fog_mask && fogIO.current) {
+        await fogIO.current.load(scene.fog_mask)
+      }
     }
 
     load()
@@ -94,17 +99,19 @@ export function useSceneDB(
   const save = useCallback(async () => {
     const sceneId = sceneIdRef.current
     if (!sceneId) return
-    const layers  = await groundIO.current?.save()
-    const objects = objectsIO.current?.save() ?? []
+    const layers   = await groundIO.current?.save()
+    const objects  = objectsIO.current?.save() ?? []
+    const fog_mask = fogIO.current ? await fogIO.current.save() : null
     await supabase
       .from('scene')
       .update({
         terrain:  { layers: layers ?? [] },
         objects,
         bg_color: bgColorRef.current,
+        fog_mask,
       })
       .eq('id', sceneId)
-  }, [groundIO, objectsIO, supabase])
+  }, [groundIO, objectsIO, fogIO, supabase])
 
   const setBgColor = useCallback((c: string) => { bgColorRef.current = c }, [])
 

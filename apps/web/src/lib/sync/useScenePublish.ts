@@ -3,6 +3,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { ObjectsIO } from '@/components/scene/ObjectPainter'
+import type { FogIO } from '@/components/scene/FogLayer'
 import { remoteLog } from '@/lib/log'
 
 const TERRAIN_DEBOUNCE_MS = 100
@@ -29,8 +30,10 @@ export interface SceneState {
   aoIntensity:    number
   blobSize:       number
   blobOpacity:    number
-  windSpeed:      number
-  windStrength:   number
+  windSpeed:         number
+  windStrength:      number
+  fowColor:          string
+  fowDisplayOpacity: number
 }
 
 export function useScenePublish(
@@ -38,12 +41,14 @@ export function useScenePublish(
   sceneIdRef: React.RefObject<string | null>,
   groundIO: React.RefObject<GroundIO | undefined>,
   objectsIO: React.RefObject<ObjectsIO | undefined>,
+  fogIO: React.RefObject<FogIO | undefined>,
 ) {
   const supabase     = createClient()
   const channelRef   = useRef<RealtimeChannel | null>(null)
   const terrainTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const objectsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const stateTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fogTimer     = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestState  = useRef<SceneState | null>(null)
 
   useEffect(() => {
@@ -86,6 +91,15 @@ export function useScenePublish(
     terrainTimer.current = setTimeout(publishTerrain, TERRAIN_DEBOUNCE_MS)
   }, [publishTerrain])
 
+  const publishFog = useCallback(async () => {
+    const sceneId = sceneIdRef.current
+    const ch = channelRef.current
+    if (!sceneId || !ch || !fogIO.current) return
+    const fogMask = await fogIO.current.save()
+    remoteLog('control', '→ FOG_UPDATED', { sceneId })
+    ch.send({ type: 'broadcast', event: 'FOG_UPDATED', payload: { sceneId, fogMask } })
+  }, [sceneIdRef, fogIO])
+
   const schedulePublishObjects = useCallback(() => {
     if (objectsTimer.current) clearTimeout(objectsTimer.current)
     objectsTimer.current = setTimeout(publishObjects, OBJECTS_DEBOUNCE_MS)
@@ -97,11 +111,16 @@ export function useScenePublish(
     stateTimer.current = setTimeout(publishState, STATE_DEBOUNCE_MS)
   }, [publishState])
 
+  const schedulePublishFog = useCallback(() => {
+    if (fogTimer.current) clearTimeout(fogTimer.current)
+    fogTimer.current = setTimeout(publishFog, 100)
+  }, [publishFog])
+
   // Re-broadcast state every 8s so displays that connect after the initial publish catch up.
   useEffect(() => {
     const id = setInterval(publishState, 8000)
     return () => clearInterval(id)
   }, [publishState])
 
-  return { schedulePublishTerrain, schedulePublishObjects, schedulePublishState }
+  return { schedulePublishTerrain, schedulePublishObjects, schedulePublishState, schedulePublishFog }
 }

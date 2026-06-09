@@ -69,9 +69,9 @@ const ALL_ROAD_PATHS = ROAD_TEXTURES.flatMap(t => [t.color, t.rough, t.normal])
 
 // ── save / load helpers ───────────────────────────────────────────────────────
 
-interface Mask { data: Uint8Array; tex: THREE.DataTexture }
+export interface Mask { data: Uint8Array; tex: THREE.DataTexture }
 
-function encodeMask(data: Uint8Array): Promise<string> {
+export function encodeMask(data: Uint8Array): Promise<string> {
   return new Promise(resolve => {
     const canvas = document.createElement('canvas')
     canvas.width = canvas.height = MASK_SIZE
@@ -93,7 +93,7 @@ function encodeMask(data: Uint8Array): Promise<string> {
   })
 }
 
-function decodeMask(dataUrl: string, mask: Mask): Promise<void> {
+export function decodeMask(dataUrl: string, mask: Mask): Promise<void> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
@@ -119,7 +119,7 @@ function decodeMask(dataUrl: string, mask: Mask): Promise<void> {
 
 // Paint or erase into a mask DataTexture at the given UV position.
 // RGBA layout (4 bytes/pixel) — Three.js alphaMap reads the .g channel.
-function applyBrush(
+export function applyBrush(
   uvX: number, uvY: number, radiusWorld: number,
   data: Uint8Array, tex: THREE.DataTexture,
   erase: boolean, opacity: number,

@@ -14,6 +14,8 @@ import type { GroundIO } from './Ground'
 import { BattleGrid, SCREEN_SIZES, SCREEN_SIZE_LABELS } from './BattleGrid'
 import { ObjectPainter } from './ObjectPainter'
 import type { ObjectsIO } from './ObjectPainter'
+import { FogLayer } from './FogLayer'
+import type { FogIO } from './FogLayer'
 import { useSceneDB } from '@/lib/sync/useSceneDB'
 import { useScenePublish } from '@/lib/sync/useScenePublish'
 
@@ -49,13 +51,15 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null)
   const groundIO    = useRef<GroundIO>(undefined)
   const objectsIO   = useRef<ObjectsIO>(undefined)
+  const fogIO       = useRef<FogIO>(undefined)
   const lightRef    = useRef<THREE.DirectionalLight>(null)
 
-  const { save, scheduleSave, sceneIdRef, setBgColor, screenW: dbScreenW, screenH: dbScreenH } = useSceneDB(tableId, groundIO, objectsIO)
-  const { schedulePublishTerrain, schedulePublishObjects, schedulePublishState } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO)
+  const { save, scheduleSave, sceneIdRef, setBgColor, screenW: dbScreenW, screenH: dbScreenH } = useSceneDB(tableId, groundIO, objectsIO, fogIO)
+  const { schedulePublishTerrain, schedulePublishObjects, schedulePublishState, schedulePublishFog } = useScenePublish(tableId, sceneIdRef, groundIO, objectsIO, fogIO)
 
   const onTerrainChange = useCallback(() => { schedulePublishTerrain(); scheduleSave() }, [schedulePublishTerrain, scheduleSave])
   const onObjectsChange = useCallback(() => { schedulePublishObjects(); scheduleSave() }, [schedulePublishObjects, scheduleSave])
+  const onFogChange     = useCallback(() => { schedulePublishFog(); scheduleSave() }, [schedulePublishFog, scheduleSave])
 
   const { windSpeed, windStrength } = useControls('Grass', {
     windSpeed:    { value: 1.2, min: 0, max: 5, step: 0.1 },
@@ -76,6 +80,17 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     selectedTexture: { value: ROAD_TEXTURE_LABELS[0], options: ROAD_TEXTURE_LABELS, label: 'Texture' },
     brushRadius:     { value: 3,   min: 0.5, max: 12, step: 0.25, label: 'Brush Size'    },
     brushOpacity:    { value: 1.0, min: 0.1, max: 1,  step: 0.05, label: 'Brush Opacity' },
+  })
+  const { fogPaintMode, fogEraseMode, fowTool, fowBrushRadius, fowColor, fowDisplayOpacity, fowDmOpacity } = useControls('Fog of War', {
+    fogPaintMode:     { value: false, label: 'Paint Fog' },
+    fogEraseMode:     { value: false, label: 'Reveal (Erase)' },
+    fowTool:          { value: 'brush', options: ['brush', 'rect'], label: 'Tool' },
+    fowBrushRadius:   { value: 4, min: 0.5, max: 20, step: 0.5, label: 'Brush Size' },
+    fowColor:         { value: '#0a0a1a', label: 'Fog Color' },
+    fowDisplayOpacity: { value: 0.92, min: 0, max: 1, step: 0.05, label: 'Player Opacity' },
+    fowDmOpacity:     { value: 0.35, min: 0, max: 1, step: 0.05, label: 'DM Opacity' },
+    'Clear Fog': button(() => { fogIO.current?.clear(); onFogChange() }),
+    'Cover All':  button(() => { fogIO.current?.fill();  onFogChange() }),
   })
   const { shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity } = useControls('Shadows', {
     shadowMode:   { value: 'Blob', options: ['Blob', 'Soft Shadows', 'SSAO', 'Soft Shadows + SSAO'], label: 'Mode' },
@@ -127,6 +142,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
       fogEnabled, fogColor, fogDensity,
       shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
       windSpeed, windStrength,
+      fowColor, fowDisplayOpacity,
     })
   }, [
     showGrid, rainIntensity, bgColor,
@@ -135,6 +151,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     fogEnabled, fogColor, fogDensity,
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
+    fowColor, fowDisplayOpacity,
     schedulePublishState,
   ])
 
@@ -178,7 +195,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   }, [sunAzimuth, sunElevation, fieldSize, useSoftShadows])
 
   return (
-    <div style={{ width: '100%', height: '100%', background: bgColor, cursor: (paintMode || objectPaintMode) ? 'none' : 'auto' }}>
+    <div style={{ width: '100%', height: '100%', background: bgColor, cursor: (paintMode || objectPaintMode || fogPaintMode) ? 'none' : 'auto' }}>
       <Canvas
         shadows
         camera={{ position: [0, initH, 0.001], fov: DEFAULT_FOV, near: 0.1, far: 300 }}
@@ -230,6 +247,16 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
             blobOpacity={blobOpacity}
             fieldSize={fieldSize}
           />
+          <FogLayer
+            paintMode={fogPaintMode}
+            eraseMode={fogEraseMode}
+            tool={fowTool as 'brush' | 'rect'}
+            brushRadius={fowBrushRadius}
+            fogColor={fowColor}
+            opacity={fowDmOpacity}
+            ioRef={fogIO}
+            onChange={onFogChange}
+          />
           <BattleGrid screenW={screenDims.w} screenH={screenDims.h} visible={showGrid} showBorder={showBorder} />
           <ObjectPainter
             objectPaintMode={objectPaintMode}
@@ -253,7 +280,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
 
         <OrbitControls
           ref={controlsRef}
-          enabled={!paintMode && !objectPaintMode}
+          enabled={!paintMode && !objectPaintMode && !fogPaintMode}
           target={[0, 0, 0]}
           minPolarAngle={0}
           maxPolarAngle={0}

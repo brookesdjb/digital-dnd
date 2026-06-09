@@ -226,10 +226,11 @@ export function ObjectPainter({
     }
   }, [ioRef])
 
-  const [{ selectedObject, randomRotation, objectScale, brushSize, density }, setControls] =
+  const [{ selectedObject, randomRotation, objectScale, brushSize, density, snapToGrid }, setControls] =
     useControls('Object Painting', () => ({
       selectedObject: { value: OBJECT_LABELS[0], options: OBJECT_LABELS, label: 'Object' },
       randomRotation: { value: true,  label: 'Random Y Rotation' },
+      snapToGrid:     { value: false, label: 'Snap to Grid' },
       objectScale:    { value: 0.5,  min: 0.05, max: 10,   step: 0.05, label: 'Scale'      },
       brushSize:      { value: 1.5,  min: 0.25, max: 15,   step: 0.25, label: 'Brush Size' },
       density:        { value: 1,    min: 1,    max: 20,   step: 1,    label: 'Density'    },
@@ -260,17 +261,20 @@ export function ObjectPainter({
   const scatterObjects = useCallback((
     cx: number, cz: number, entry: CatalogEntry,
     bSize: number, dens: number, rRotation: boolean, oScale: number,
+    snap: boolean,
   ) => {
     const items: PlacedObject[] = Array.from({ length: dens }, () => {
       const angle = Math.random() * Math.PI * 2
       const r     = Math.sqrt(Math.random()) * bSize
+      const rawX  = cx + Math.cos(angle) * r
+      const rawZ  = cz + Math.sin(angle) * r
       return {
         id:         String(Date.now() + Math.random()),
         path:       entry.path,
         shadowType: entry.shadowType,
-        x:          cx + Math.cos(angle) * r,
+        x:          snap ? Math.round(rawX) : rawX,
         y:          0,
-        z:          cz + Math.sin(angle) * r,
+        z:          snap ? Math.round(rawZ) : rawZ,
         ry:         rRotation ? Math.random() * Math.PI * 2 : 0,
         scale:      oScale,
       }
@@ -289,7 +293,12 @@ export function ObjectPainter({
     cursorRef.current.visible = objectPaintMode
     if (objectPaintMode) {
       cursorRef.current.position.set(cursorPos.current.x, 0.05, cursorPos.current.z)
-      cursorRef.current.scale.set(brushSize, brushSize, 1)
+      // In snap mode show a 1-unit cell ring; otherwise scale to brush radius.
+      cursorRef.current.scale.set(
+        snapToGrid ? 0.5 : brushSize,
+        snapToGrid ? 0.5 : brushSize,
+        1,
+      )
     }
   })
 
@@ -299,25 +308,29 @@ export function ObjectPainter({
     isPainting.current = true
     const entry = OBJECT_CATALOG.find(o => o.label === selectedObject)
     if (!entry) return
-    lastPaintPos.current = { x: e.point.x, z: e.point.z }
-    scatterObjects(e.point.x, e.point.z, entry, brushSize, density, randomRotation, objectScale)
-  }, [objectPaintMode, selectedObject, brushSize, density, randomRotation, objectScale, scatterObjects])
+    const px = snapToGrid ? Math.round(e.point.x) : e.point.x
+    const pz = snapToGrid ? Math.round(e.point.z) : e.point.z
+    lastPaintPos.current = { x: px, z: pz }
+    scatterObjects(px, pz, entry, brushSize, density, randomRotation, objectScale, snapToGrid)
+  }, [objectPaintMode, selectedObject, brushSize, density, randomRotation, objectScale, snapToGrid, scatterObjects])
 
   const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
     if (!objectPaintMode) return
     e.stopPropagation()
-    cursorPos.current.set(e.point.x, 0, e.point.z)
+    const px = snapToGrid ? Math.round(e.point.x) : e.point.x
+    const pz = snapToGrid ? Math.round(e.point.z) : e.point.z
+    cursorPos.current.set(px, 0, pz)
     if (!isPainting.current) return
     const last = lastPaintPos.current
     if (!last) return
-    const dx = e.point.x - last.x
-    const dz = e.point.z - last.z
-    if (Math.sqrt(dx * dx + dz * dz) < brushSize * 0.4) return
+    const dx = px - last.x
+    const dz = pz - last.z
+    if (Math.sqrt(dx * dx + dz * dz) < (snapToGrid ? 0.9 : brushSize * 0.4)) return
     const entry = OBJECT_CATALOG.find(o => o.label === selectedObject)
     if (!entry) return
-    lastPaintPos.current = { x: e.point.x, z: e.point.z }
-    scatterObjects(e.point.x, e.point.z, entry, brushSize, density, randomRotation, objectScale)
-  }, [objectPaintMode, selectedObject, brushSize, density, randomRotation, objectScale, scatterObjects])
+    lastPaintPos.current = { x: px, z: pz }
+    scatterObjects(px, pz, entry, brushSize, density, randomRotation, objectScale, snapToGrid)
+  }, [objectPaintMode, selectedObject, brushSize, density, randomRotation, objectScale, snapToGrid, scatterObjects])
 
   const groupedPlaced = useMemo(() => {
     const groups: Record<string, PlacedObject[]> = {}

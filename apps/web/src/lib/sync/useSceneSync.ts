@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
+import type { FogIO } from '@/components/scene/FogLayer'
 import type { PlacedObject } from '@dnd-table/types'
 import { remoteLog } from '@/lib/log'
 
 export function useSceneSync(
   tableId: string,
   groundIO: React.RefObject<GroundIO | undefined>,
+  fogIO: React.RefObject<FogIO | undefined>,
 ) {
   const supabase = createClient()
   const [objects,        setObjects]        = useState<PlacedObject[]>([])
@@ -31,10 +33,13 @@ export function useSceneSync(
   const [aoIntensity,    setAoIntensity]    = useState(5.0)
   const [blobSize,       setBlobSize]       = useState(1.0)
   const [blobOpacity,    setBlobOpacity]    = useState(1.0)
-  const [windSpeed,      setWindSpeed]      = useState(1.2)
-  const [windStrength,   setWindStrength]   = useState(1.0)
-  // Pending terrain handles the race where a Realtime message arrives before groundIO mounts.
+  const [windSpeed,         setWindSpeed]         = useState(1.2)
+  const [windStrength,      setWindStrength]      = useState(1.0)
+  const [fowColor,          setFowColor]          = useState('#0a0a1a')
+  const [fowDisplayOpacity, setFowDisplayOpacity] = useState(0.92)
+  // Pending buffers handle the race where a Realtime message arrives before ioRefs mount.
   const pendingTerrain = useRef<string[] | null>(null)
+  const pendingFogMask = useRef<string | null>(null)
 
   // Initial DB load
   useEffect(() => {
@@ -57,7 +62,7 @@ export function useSceneSync(
 
       const { data: scene, error: sceneError } = await supabase
         .from('scene')
-        .select('id, terrain, objects, bg_color, weather')
+        .select('id, terrain, objects, bg_color, weather, fog_mask')
         .eq('id', table.active_scene_id)
         .single()
 
@@ -66,6 +71,7 @@ export function useSceneSync(
 
       const terrain = scene.terrain as { layers?: string[] } | null
       const objs    = scene.objects as PlacedObject[] | null
+      const fogMask = (scene as { fog_mask?: string | null }).fog_mask ?? null
 
       if (terrain?.layers) {
         if (groundIO.current) {
@@ -74,21 +80,35 @@ export function useSceneSync(
           pendingTerrain.current = terrain.layers
         }
       }
+      if (fogMask) {
+        if (fogIO.current) {
+          await fogIO.current.load(fogMask)
+        } else {
+          pendingFogMask.current = fogMask
+        }
+      }
       if (objs) setObjects(objs)
       if (scene.bg_color) setBgColor(scene.bg_color)
-      remoteLog('display', 'DB_LOAD', { sceneId: scene.id, objects: objs?.length ?? 0, hasTerrrain: !!terrain?.layers })
+      remoteLog('display', 'DB_LOAD', { sceneId: scene.id, objects: objs?.length ?? 0, hasTerrain: !!terrain?.layers, hasFog: !!fogMask })
     }
     load()
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableId])
 
-  // Apply any terrain that arrived before groundIO was ready (runs every render, cheap check)
+  // Apply buffered data that arrived before ioRefs were ready (runs every render, cheap check)
   useEffect(() => {
     if (!pendingTerrain.current || !groundIO.current) return
     const layers = pendingTerrain.current
     pendingTerrain.current = null
     groundIO.current.load(layers)
+  })
+
+  useEffect(() => {
+    if (!pendingFogMask.current || !fogIO.current) return
+    const mask = pendingFogMask.current
+    pendingFogMask.current = null
+    fogIO.current.load(mask)
   })
 
   // Realtime subscription
@@ -102,6 +122,15 @@ export function useSceneSync(
           await groundIO.current.load(layers)
         } else {
           pendingTerrain.current = layers
+        }
+      })
+      .on('broadcast', { event: 'FOG_UPDATED' }, async ({ payload }) => {
+        const fogMask = (payload as { fogMask: string }).fogMask
+        remoteLog('display', '← FOG_UPDATED', {})
+        if (fogIO.current) {
+          await fogIO.current.load(fogMask)
+        } else {
+          pendingFogMask.current = fogMask
         }
       })
       .on('broadcast', { event: 'OBJECTS_UPDATED' }, ({ payload }) => {
@@ -131,8 +160,10 @@ export function useSceneSync(
         if (p.aoIntensity    !== undefined) setAoIntensity(p.aoIntensity    as number)
         if (p.blobSize       !== undefined) setBlobSize(p.blobSize       as number)
         if (p.blobOpacity    !== undefined) setBlobOpacity(p.blobOpacity    as number)
-        if (p.windSpeed      !== undefined) setWindSpeed(p.windSpeed      as number)
-        if (p.windStrength   !== undefined) setWindStrength(p.windStrength   as number)
+        if (p.windSpeed          !== undefined) setWindSpeed(p.windSpeed          as number)
+        if (p.windStrength       !== undefined) setWindStrength(p.windStrength       as number)
+        if (p.fowColor           !== undefined) setFowColor(p.fowColor           as string)
+        if (p.fowDisplayOpacity  !== undefined) setFowDisplayOpacity(p.fowDisplayOpacity  as number)
       })
       .subscribe()
 
@@ -148,5 +179,6 @@ export function useSceneSync(
     fogEnabled, fogColor, fogDensity,
     shadowMode, shadowRadius, aoRadius, aoIntensity, blobSize, blobOpacity,
     windSpeed, windStrength,
+    fowColor, fowDisplayOpacity,
   }
 }
