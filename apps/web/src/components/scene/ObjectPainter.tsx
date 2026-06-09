@@ -4,7 +4,6 @@ import { Suspense, useState, useRef, useCallback, useMemo, useEffect } from 'rea
 import { useGLTF, useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import type { ThreeEvent } from '@react-three/fiber'
-import { useControls, button } from 'leva'
 import * as THREE from 'three'
 import type { GLTF } from 'three-stdlib'
 import { applyWindToGrassScene, InstancedModel } from './Scatter'
@@ -167,14 +166,22 @@ export function InstancedPlacedAsset(props: InstancedAssetProps) {
 // ── ioRef type ────────────────────────────────────────────────────────────────
 
 export interface ObjectsIO {
-  save: () => PlacedObject[]
-  load: (objects: PlacedObject[]) => void
+  save:     () => PlacedObject[]
+  load:     (objects: PlacedObject[]) => void
+  undo:     () => void
+  clearAll: () => void
 }
 
 // ── main component ────────────────────────────────────────────────────────────
 
 interface ObjectPainterProps {
   objectPaintMode: boolean
+  selectedModel:   string
+  objectScale:     number
+  brushSize:       number
+  density:         number
+  randomRotation:  boolean
+  snapToGrid:      boolean
   ioRef?: React.MutableRefObject<ObjectsIO | undefined>
   castShadow?: boolean
   showBlobs?: boolean
@@ -185,6 +192,12 @@ interface ObjectPainterProps {
 
 export function ObjectPainter({
   objectPaintMode,
+  selectedModel,
+  objectScale,
+  brushSize,
+  density,
+  randomRotation,
+  snapToGrid,
   ioRef,
   castShadow  = false,
   showBlobs   = true,
@@ -196,19 +209,6 @@ export function ObjectPainter({
   const [placed, setPlaced] = useState<PlacedObject[]>([])
 
   useEffect(() => { BLOB_MAT.opacity = blobOpacity }, [blobOpacity])
-
-  const undo = useCallback(() => {
-    const next = placedRef.current.slice(0, -1)
-    placedRef.current = next
-    setPlaced(next)
-    onChange?.()
-  }, [onChange])
-
-  const clearAll = useCallback(() => {
-    placedRef.current = []
-    setPlaced([])
-    onChange?.()
-  }, [onChange])
 
   useEffect(() => {
     if (!ioRef) return
@@ -223,31 +223,15 @@ export function ObjectPainter({
         placedRef.current = loaded
         setPlaced(loaded)
       },
+      undo:     () => { const next = placedRef.current.slice(0, -1); placedRef.current = next; setPlaced(next); onChange?.() },
+      clearAll: () => { placedRef.current = []; setPlaced([]); onChange?.() },
     }
-  }, [ioRef])
-
-  const [{ selectedObject, randomRotation, objectScale, brushSize, density, snapToGrid }, setControls] =
-    useControls('Object Painting', () => ({
-      selectedObject: { value: OBJECT_LABELS[0], options: OBJECT_LABELS, label: 'Object' },
-      randomRotation: { value: true,  label: 'Random Y Rotation' },
-      snapToGrid:     { value: false, label: 'Snap to Grid' },
-      objectScale:    { value: 0.5,  min: 0.05, max: 10,   step: 0.05, label: 'Scale'      },
-      brushSize:      { value: 1.5,  min: 0.25, max: 15,   step: 0.25, label: 'Brush Size' },
-      density:        { value: 1,    min: 1,    max: 20,   step: 1,    label: 'Density'    },
-      'Undo Last':    button(() => undo()),
-      'Clear All':    button(() => clearAll()),
-    }))
+  }, [ioRef, onChange])
 
   useEffect(() => {
-    const entry = OBJECT_CATALOG.find(o => o.label === selectedObject)
-    if (entry) setControls({ objectScale: entry.defaultScale })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedObject])
-
-  useEffect(() => {
-    const entry = OBJECT_CATALOG.find(o => o.label === selectedObject)
+    const entry = OBJECT_CATALOG.find(o => o.label === selectedModel)
     if (entry) useGLTF.preload(entry.path)
-  }, [selectedObject])
+  }, [selectedModel])
 
   const isPainting   = useRef(false)
   const lastPaintPos = useRef<{ x: number; z: number } | null>(null)
@@ -306,13 +290,13 @@ export function ObjectPainter({
     if (!objectPaintMode) return
     e.stopPropagation()
     isPainting.current = true
-    const entry = OBJECT_CATALOG.find(o => o.label === selectedObject)
+    const entry = OBJECT_CATALOG.find(o => o.label === selectedModel)
     if (!entry) return
     const px = snapToGrid ? Math.round(e.point.x) : e.point.x
     const pz = snapToGrid ? Math.round(e.point.z) : e.point.z
     lastPaintPos.current = { x: px, z: pz }
     scatterObjects(px, pz, entry, brushSize, density, randomRotation, objectScale, snapToGrid)
-  }, [objectPaintMode, selectedObject, brushSize, density, randomRotation, objectScale, snapToGrid, scatterObjects])
+  }, [objectPaintMode, selectedModel, brushSize, density, randomRotation, objectScale, snapToGrid, scatterObjects])
 
   const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
     if (!objectPaintMode) return
@@ -326,11 +310,11 @@ export function ObjectPainter({
     const dx = px - last.x
     const dz = pz - last.z
     if (Math.sqrt(dx * dx + dz * dz) < (snapToGrid ? 0.9 : brushSize * 0.4)) return
-    const entry = OBJECT_CATALOG.find(o => o.label === selectedObject)
+    const entry = OBJECT_CATALOG.find(o => o.label === selectedModel)
     if (!entry) return
     lastPaintPos.current = { x: px, z: pz }
     scatterObjects(px, pz, entry, brushSize, density, randomRotation, objectScale, snapToGrid)
-  }, [objectPaintMode, selectedObject, brushSize, density, randomRotation, objectScale, snapToGrid, scatterObjects])
+  }, [objectPaintMode, selectedModel, brushSize, density, randomRotation, objectScale, snapToGrid, scatterObjects])
 
   const groupedPlaced = useMemo(() => {
     const groups: Record<string, PlacedObject[]> = {}

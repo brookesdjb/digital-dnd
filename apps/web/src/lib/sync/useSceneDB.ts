@@ -38,7 +38,7 @@ export function useSceneDB(
         .eq('id', tableId)
         .single()
 
-      if (tableError) console.error('useSceneDB: table_config fetch', tableError)
+      if (tableError) console.error('useSceneDB: table_config fetch', tableError?.message, tableError?.code, tableError)
       if (cancelled || !table) return
 
       setScreenW(Number(table.screen_w_in))

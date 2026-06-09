@@ -1,7 +1,14 @@
 import { createBrowserClient } from '@supabase/ssr'
 
+declare global {
+  interface Window {
+    __SUPABASE_URL__: string
+    __SUPABASE_ANON_KEY__: string
+  }
+}
+
 export const createClient = () =>
   createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    window.__SUPABASE_URL__,
+    window.__SUPABASE_ANON_KEY__,
   )

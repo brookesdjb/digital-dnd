@@ -101,8 +101,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_SUPABASE_URL: http://${HOST_IP}:8000
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${ANON_KEY}
+      SUPABASE_URL: http://${HOST_IP}:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY}
 
 volumes:
   db-data:
