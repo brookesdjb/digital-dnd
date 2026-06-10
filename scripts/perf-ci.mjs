@@ -50,7 +50,7 @@ const onlyRoute  = flag('route')
 const presets    = onlyPreset ? [onlyPreset] : ALL_PRESETS
 const routes     = onlyRoute  ? [onlyRoute]  : ALL_ROUTES
 
-const WARMUP_TIMEOUT_MS = 45_000
+const WARMUP_TIMEOUT_MS = Number(process.env.PERF_WARMUP_TIMEOUT ?? 90_000)
 const SAMPLE_MS         = 5_000
 const SAMPLE_INTERVAL   = 200
 const SAMPLES_NEEDED    = SAMPLE_MS / SAMPLE_INTERVAL
@@ -228,7 +228,7 @@ async function main() {
   console.log(`  Routes:  ${routes.join(', ')}`)
   console.log(`  Presets: ${presets.join(', ')}`)
   console.log(`  Headless: true (ANGLE — WebGL via GPU/SwiftShader fallback)`)
-  console.log(`  Warmup:  ${WARMUP_TIMEOUT_MS / 1000}s max`)
+  console.log(`  Warmup:  ${WARMUP_TIMEOUT_MS / 1000}s max per preset (set PERF_WARMUP_TIMEOUT to adjust)`)
   console.log(`  Sample:  ${SAMPLE_MS / 1000}s per preset`)
   console.log()
 
