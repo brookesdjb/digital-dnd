@@ -244,7 +244,7 @@ async function main() {
   console.log(`  Table:   ${TABLE_ID}`)
   console.log(`  Routes:  ${routes.join(', ')}`)
   console.log(`  Presets: ${presets.join(', ')}`)
-  console.log(`  Headless: true (ANGLE — WebGL via GPU/SwiftShader fallback)`)
+  console.log(`  Headless: true (SwiftShader software WebGL)`)
   console.log(`  Warmup:  ${WARMUP_TIMEOUT_MS / 1000}s max per preset (set PERF_WARMUP_TIMEOUT to adjust)`)
   console.log(`  Sample:  ${SAMPLE_MS / 1000}s per preset`)
   console.log()
@@ -252,11 +252,12 @@ async function main() {
   const browser = await chromium.launch({
     headless: true,
     args: [
-      '--enable-webgl',
-      '--use-gl=angle',
-      '--ignore-gpu-blocklist',
       '--no-sandbox',
       '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--enable-webgl',
+      '--use-gl=swiftshader',
+      '--ignore-gpu-blocklist',
     ],
   })
 
@@ -265,18 +266,16 @@ async function main() {
   let done = 0
   const startTime = Date.now()
 
-  // Reuse a single page for all presets — avoids creating a new WebGL
-  // context for each preset, which is very expensive with SwiftShader.
-  const page = await browser.newPage({
-    viewport: { width: 1280, height: 800 },
-  })
-
   for (const route of routes) {
     for (const preset of presets) {
       done++
       console.log(`  [${done}/${total}] ${route}/${preset}`)
 
       const url = `${baseUrl}/${route}/${TABLE_ID}?preset=${preset}&perf=1`
+
+      // Create a fresh page per preset so a frozen context from one preset
+      // can't block subsequent navigations on the same page.
+      const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 
       try {
         await waitForReady(page, url)
@@ -292,11 +291,11 @@ async function main() {
       } catch (err) {
         results.push({ route, preset, stats: null, error: err.message })
         console.log(`    ✖ FAIL: ${err.message}`)
+      } finally {
+        await page.close().catch(() => {})
       }
     }
   }
-
-  await page.close()
   await browser.close()
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(0)
