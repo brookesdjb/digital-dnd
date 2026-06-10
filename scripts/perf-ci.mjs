@@ -70,6 +70,9 @@ async function waitForReady(page, url) {
 
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
 
+  // Wait until the page has rendered at least one frame (any stats at all).
+  // We avoid the 180-frame warmup from PerformanceHUD.tsx because software
+  // WebGL (SwiftShader on Linux CI) is too slow to reach it in a reasonable time.
   const deadline = Date.now() + WARMUP_TIMEOUT_MS
   let lastStats = null
   let lastFrame = 0
@@ -81,8 +84,9 @@ async function waitForReady(page, url) {
     const stats = await page.evaluate(() => window.__perfStats ?? null)
     lastStats = stats
 
-    if (stats?.ready) {
-      process.stdout.write(`\r  ${spin()} ready after ${stats.sampleCount} frames          \n`)
+    // Accept any non-null stats — don't wait for the 180-frame warmup flag
+    if (stats && stats.sampleCount > 0) {
+      process.stdout.write(`\r  ${spin()} sampling after ${stats.sampleCount} frames, fps=${stats.fps}          \n`)
       return
     }
 
