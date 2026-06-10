@@ -1,0 +1,120 @@
+name: Performance Check
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  profile:
+    name: Profile & Compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Build app
+        run: npm run build
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: Start dev server
+        run: |
+          npm run dev &
+          for i in $(seq 30); do
+            curl -s -o /dev/null http://localhost:3000 && break
+            sleep 1
+          done
+
+      - name: Run performance profiler
+        run: |
+          TABLE_ID=${{ secrets.TABLE_ID }} npm run perf:ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+
+      - name: Upload raw results
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: /tmp/perf-ci-results.json
+          retention-days: 30
+
+      - name: Compare against baseline or seed it
+        id: compare
+        run: |
+          PLATFORM=$(node -p 'process.platform')
+          BASELINE="perf/baseline-${PLATFORM}.json"
+
+          if [ -f "$BASELINE" ]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+            node scripts/perf-check.mjs
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+            cp /tmp/perf-ci-results.json "$BASELINE"
+            echo "✅ No baseline existed for ${PLATFORM} — seeded one from this run."
+            echo ""
+            echo "   Commit it to the repo:"
+            echo "     git add perf/baseline-${PLATFORM}.json"
+            echo "     git commit -m 'perf: seed baseline for ${PLATFORM}'"
+            echo "     git push"
+          fi
+        continue-on-error: true
+
+      - name: Upload results to step summary
+        if: always()
+        run: |
+          PLATFORM=$(node -p 'process.platform')
+          BASELINE="perf/baseline-${PLATFORM}.json"
+          if [ -f "$BASELINE" ]; then
+            {
+              echo '### Performance Check'
+              echo "\`\`\`"
+              node scripts/perf-check.mjs 2>&1 || true
+              echo "\`\`\`"
+            } >> $GITHUB_STEP_SUMMARY || true
+          fi
+
+      - name: Fail if regression detected
+        if: steps.compare.outcome == 'failure'
+        run: |
+          echo "❌ Performance regression detected (see summary above)."
+          echo ""
+          echo "To accept current numbers as the new baseline:"
+          echo "  cp /tmp/perf-ci-results.json perf/baseline-$(node -p 'process.platform').json"
+          echo "  git add perf/"
+          echo "  git commit -m 'perf: update baseline [skip ci]'"
+          echo "  git push"
+          exit 1
+
+      - name: Remind to commit baseline (first run only)
+        if: steps.compare.outputs.found == 'false'
+        run: |
+          echo "⚠️  First run on this platform — no baseline to compare against."
+          echo ""
+          echo "   The seeded baseline is saved as a workflow artifact."
+          echo "   To enable future comparisons, download it and commit:"
+          echo "     cp perf/baseline-$(node -p 'process.platform').json perf/"
+          echo "     git add perf/baseline-$(node -p 'process.platform').json"
+          echo "     git commit -m 'perf: seed baseline for $(node -p 'process.platform')'"
+          echo "     git push"
+          echo ""
+          echo "   The action passed because there's nothing to compare yet."

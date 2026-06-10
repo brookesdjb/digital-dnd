@@ -9,9 +9,11 @@
     "dev": "npm run dev -w apps/web",
     "build": "npm run build -w apps/web",
     "lint": "npm run lint -w apps/web",
-    "profile": "node scripts/profile.mjs"
+    "profile": "node scripts/profile.mjs",
+    "perf:ci": "node scripts/perf-ci.mjs"
   },
   "devDependencies": {
+    "@playwright/mcp": "^0.0.76",
     "@playwright/test": "^1.60.0",
     "playwright": "^1.60.0"
   }

@@ -1,0 +1,90 @@
+{
+  "description": "Performance baseline — generated from macOS headless run (2026-06-10). Compares avg FPS; build fails if any preset drops >15%.",
+  "thresholdPct": 15,
+  "results": [
+    {
+      "route": "control",
+      "preset": "baseline",
+      "stats": {
+        "avgFps": 125.1,
+        "minFps": 97,
+        "p5Fps": 98,
+        "avgFrameMs": 8.1,
+        "p95FrameMs": 10.2,
+        "drawCalls": 26,
+        "triangles": 180192,
+        "samples": 25
+      }
+    },
+    {
+      "route": "control",
+      "preset": "wind",
+      "stats": {
+        "avgFps": 119.4,
+        "minFps": 99,
+        "p5Fps": 99,
+        "avgFrameMs": 8.5,
+        "p95FrameMs": 10.1,
+        "drawCalls": 26,
+        "triangles": 180192,
+        "samples": 25
+      }
+    },
+    {
+      "route": "control",
+      "preset": "rain",
+      "stats": {
+        "avgFps": 122.6,
+        "minFps": 97,
+        "p5Fps": 112,
+        "avgFrameMs": 8.2,
+        "p95FrameMs": 8.9,
+        "drawCalls": 29,
+        "triangles": 243856,
+        "samples": 25
+      }
+    },
+    {
+      "route": "control",
+      "preset": "soft-shadows",
+      "stats": {
+        "avgFps": 121.6,
+        "minFps": 109,
+        "p5Fps": 112,
+        "avgFrameMs": 8.2,
+        "p95FrameMs": 8.9,
+        "drawCalls": 25,
+        "triangles": 178560,
+        "samples": 25
+      }
+    },
+    {
+      "route": "control",
+      "preset": "ssao",
+      "stats": {
+        "avgFps": 120,
+        "minFps": 110,
+        "p5Fps": 111,
+        "avgFrameMs": 8.3,
+        "p95FrameMs": 9,
+        "drawCalls": 1,
+        "triangles": 1,
+        "samples": 25
+      }
+    },
+    {
+      "route": "control",
+      "preset": "full",
+      "stats": {
+        "avgFps": 120.1,
+        "minFps": 100,
+        "p5Fps": 100,
+        "avgFrameMs": 8.4,
+        "p95FrameMs": 10,
+        "drawCalls": 1,
+        "triangles": 1,
+        "samples": 25
+      }
+    }
+  ]
+}
