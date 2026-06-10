@@ -248,14 +248,16 @@ async function main() {
   let done = 0
   const startTime = Date.now()
 
+  // Reuse a single page for all presets — avoids creating a new WebGL
+  // context for each preset, which is very expensive with SwiftShader.
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+  })
+
   for (const route of routes) {
     for (const preset of presets) {
       done++
       console.log(`  [${done}/${total}] ${route}/${preset}`)
-
-      const page = await browser.newPage({
-        viewport: { width: 1280, height: 800 },
-      })
 
       const url = `${baseUrl}/${route}/${TABLE_ID}?preset=${preset}&perf=1`
 
@@ -273,12 +275,11 @@ async function main() {
       } catch (err) {
         results.push({ route, preset, stats: null, error: err.message })
         console.log(`    ✖ FAIL: ${err.message}`)
-      } finally {
-        await page.close()
       }
     }
   }
 
+  await page.close()
   await browser.close()
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(0)
