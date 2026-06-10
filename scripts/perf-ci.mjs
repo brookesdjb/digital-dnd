@@ -47,8 +47,11 @@ const TABLE_ID   = process.env.TABLE_ID ?? flag('tableId')
 const BASE_URL   = process.env.BASE_URL ?? null
 const onlyPreset = flag('preset')
 const onlyRoute  = flag('route')
-const presets    = onlyPreset ? [onlyPreset] : ALL_PRESETS
-const routes     = onlyRoute  ? [onlyRoute]  : ALL_ROUTES
+// CI_PRESETS / CI_ROUTES let the workflow narrow the run without changing defaults
+const ciPresets  = process.env.CI_PRESETS?.split(',').map(s => s.trim()).filter(Boolean)
+const ciRoutes   = process.env.CI_ROUTES?.split(',').map(s => s.trim()).filter(Boolean)
+const presets    = onlyPreset ? [onlyPreset] : (ciPresets ?? ALL_PRESETS)
+const routes     = onlyRoute  ? [onlyRoute]  : (ciRoutes  ?? ALL_ROUTES)
 
 const WARMUP_TIMEOUT_MS = Number(process.env.PERF_WARMUP_TIMEOUT ?? 90_000)
 const SAMPLE_MS         = 5_000
@@ -63,12 +66,22 @@ if (!TABLE_ID) {
 
 // ── Sampling ────────────────────────────────────────────────────────────────
 
+// page.evaluate() hangs indefinitely if the browser's JS thread is blocked
+// (e.g. SwiftShader compiling GLSL shaders on the CPU). Wrap with a Node.js
+// timeout so the warmup deadline check can actually run.
+function evalWithTimeout(page, fn, ms = 5_000) {
+  return Promise.race([
+    page.evaluate(fn),
+    new Promise(resolve => setTimeout(() => resolve(null), ms)),
+  ])
+}
+
 async function waitForReady(page, url) {
   const errors = []
   page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()) })
   page.on('pageerror', err => errors.push(err.message))
 
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
 
   // Wait until the page has rendered at least one frame (any stats at all).
   // We avoid the 180-frame warmup from PerformanceHUD.tsx because software
@@ -80,8 +93,8 @@ async function waitForReady(page, url) {
   const spin = () => ['⢎', '⠢', '⡱', '⢔'][spinner++ % 4]
 
   while (Date.now() < deadline) {
-    await page.waitForTimeout(2000)
-    const stats = await page.evaluate(() => window.__perfStats ?? null)
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    const stats = await evalWithTimeout(page, () => window.__perfStats ?? null)
     lastStats = stats
 
     // Accept any non-null stats — don't wait for the 180-frame warmup flag
@@ -109,8 +122,8 @@ async function waitForReady(page, url) {
 async function collectSamples(page) {
   const collected = []
   for (let i = 0; i < SAMPLES_NEEDED; i++) {
-    await page.waitForTimeout(SAMPLE_INTERVAL)
-    const s = await page.evaluate(() => window.__perfStats)
+    await new Promise(resolve => setTimeout(resolve, SAMPLE_INTERVAL))
+    const s = await evalWithTimeout(page, () => window.__perfStats, 2_000)
     if (s) collected.push(s)
   }
   return collected
