@@ -10,40 +10,25 @@ import type { PlacedImage } from '@dnd-table/types'
 
 const GROUND_SIZE = 80
 
-// ── Edge-blending shader ──────────────────────────────────────────────────────
-// Fades alpha to 0 at image edges and draws a selection highlight.
-
-const VERT = /* glsl */`
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`
-
-const FRAG = /* glsl */`
-  uniform sampler2D map;
-  uniform float edgeFade;
-  uniform float isSelected;
-  varying vec2 vUv;
-
-  void main() {
-    vec4 col = texture2D(map, vUv);
-
-    // Smooth edge fade — independent on X and Y, combined multiplicatively
+// ── Edge-fade + selection injected into a lit material ─────────────────────────
+// Images use MeshLambertMaterial so they pick up the scene's hemisphere/sun light
+// (and receive cast shadows) instead of rendering at flat full brightness. This
+// snippet is injected via onBeforeCompile after the lit color is computed: it
+// fades alpha to 0 at the edges and draws the amber selection border. It relies
+// on `vMapUv` (provided automatically when the material has a `map`).
+const EDGE_INJECT = /* glsl */`
+  {
     float f = max(edgeFade, 0.001);
-    float ax = smoothstep(0.0, f, vUv.x) * smoothstep(0.0, f, 1.0 - vUv.x);
-    float ay = smoothstep(0.0, f, vUv.y) * smoothstep(0.0, f, 1.0 - vUv.y);
+    float ax = smoothstep(0.0, f, vMapUv.x) * smoothstep(0.0, f, 1.0 - vMapUv.x);
+    float ay = smoothstep(0.0, f, vMapUv.y) * smoothstep(0.0, f, 1.0 - vMapUv.y);
     float alpha = ax * ay;
 
-    // Amber selection border (1.5% inset from each edge)
     float bd = 0.015;
-    float border = isSelected * (1.0 - step(bd, min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y))));
+    float edgeMin = min(min(vMapUv.x, 1.0 - vMapUv.x), min(vMapUv.y, 1.0 - vMapUv.y));
+    float border = isSelected * (1.0 - step(bd, edgeMin));
 
-    vec3 finalColor = mix(col.rgb, vec3(1.0, 0.72, 0.08), border * 0.85);
-    float finalAlpha = mix(col.a * alpha, 1.0, border * 0.8);
-
-    gl_FragColor = vec4(finalColor, finalAlpha);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0, 0.72, 0.08), border * 0.85);
+    gl_FragColor.a   = mix(gl_FragColor.a * alpha, 1.0, border * 0.8);
   }
 `
 
@@ -66,24 +51,36 @@ function PlacedImageMesh({ img, isSelected, onMeshReady, onMeshCleanup }: Placed
 
   const texture = useLoader(THREE.TextureLoader, url)
 
-  const material = useMemo(() => new THREE.ShaderMaterial({
-    uniforms: {
-      map:        { value: null },
-      edgeFade:   { value: img.edgeFade },
-      isSelected: { value: 0.0 },
-    },
-    vertexShader:   VERT,
-    fragmentShader: FRAG,
-    transparent: true,
-    side: THREE.FrontSide,
-    depthWrite: false,
-  // Created once — texture + uniforms updated imperatively below.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [])
+  // Edge-fade / selection uniforms live in a stable ref so they can be updated
+  // without recompiling the material (onBeforeCompile wires them into the shader).
+  const fx = useRef({ edgeFade: { value: img.edgeFade }, isSelected: { value: 0.0 } })
 
-  useEffect(() => { material.uniforms.map.value = texture }, [material, texture])
-  useEffect(() => { material.uniforms.edgeFade.value = img.edgeFade }, [material, img.edgeFade])
-  useEffect(() => { material.uniforms.isSelected.value = isSelected ? 1.0 : 0.0 }, [material, isSelected])
+  const material = useMemo(() => {
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.needsUpdate = true
+    const m = new THREE.MeshLambertMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.FrontSide,
+    })
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.edgeFade   = fx.current.edgeFade
+      shader.uniforms.isSelected = fx.current.isSelected
+      shader.fragmentShader =
+        'uniform float edgeFade;\nuniform float isSelected;\n' +
+        shader.fragmentShader.replace(
+          '#include <dithering_fragment>',
+          EDGE_INJECT + '\n#include <dithering_fragment>',
+        )
+    }
+    return m
+  // Created once per image — texture is stable (cached by useLoader for this url).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => { fx.current.edgeFade.value = img.edgeFade }, [img.edgeFade])
+  useEffect(() => { fx.current.isSelected.value = isSelected ? 1.0 : 0.0 }, [isSelected])
   useEffect(() => () => { material.dispose() }, [material])
 
   const meshRef = useRef<THREE.Mesh>(null)
@@ -101,6 +98,7 @@ function PlacedImageMesh({ img, isSelected, onMeshReady, onMeshCleanup }: Placed
       rotation={[-Math.PI / 2, 0, img.rotation * Math.PI / 180]}
       position={[img.x, 0.002, img.z]}
       renderOrder={-0.5}
+      receiveShadow
     >
       <planeGeometry args={[img.widthIn, img.heightIn]} />
       <primitive object={material} attach="material" />

@@ -65,6 +65,7 @@ const MODEL_SWATCH: Record<string, string> = {
 // Texture swatch colours (approximation from filenames)
 const TEX_SWATCHES: Record<string, [string, string]> = {
   'Natural Grass':    ['#5a7a3c', '#3d5828'],
+  'Water':            ['#2f7d96', '#1f4a5c'],
   'Ground Stones 02': ['#8f8a7f', '#69655c'],
   'Ground Stones 01': ['#807c73', '#5d5a52'],
   'Ground 02':        ['#7c5a3c', '#5e4329'],

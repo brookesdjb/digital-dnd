@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { randomUUID } from '@/lib/uuid'
 
 export interface AssetRecord {
   id: string
@@ -51,7 +52,7 @@ export function useAssets(tableId: string) {
     setLoading(true)
     try {
       const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png'
-      const key = `${tableId}/${crypto.randomUUID()}.${ext}`
+      const key = `${tableId}/${randomUUID()}.${ext}`
 
       const { error: uploadError } = await supabase.storage
         .from('map-assets')

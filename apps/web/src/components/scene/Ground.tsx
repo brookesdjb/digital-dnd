@@ -11,8 +11,13 @@ const MASK_SIZE   = 512
 const ROAD_ROT    = [-Math.PI / 2, 0, 0] as const
 const ROAD_REPEAT = 20
 
+// Procedural water — no texture asset; rendered by <WaterLayer>. Empty colorPath
+// is never loaded because Ground special-cases this label.
+export const WATER_LABEL = 'Water'
+
 export const BASE_TEXTURES = [
   { label: 'Natural Grass', colorPath: '/textures/moss_ground_03_2k/moss_groud_03_Base_Color_2k.png' },
+  { label: WATER_LABEL, colorPath: '' },
   { label: 'Ground Stones 02', colorPath: '/textures/ground_stones_02_2k/ground_stones_02_basecolor_2k.png' },
   { label: 'Ground Stones 01', colorPath: '/textures/ground_stones_01_2k/ground_stones_01_baseColor_2k.png' },
   { label: 'Ground 02',        colorPath: '/textures/ground_02_2k/ground_02_color_2k.png' },
@@ -81,6 +86,16 @@ export const ROAD_TEXTURES = [
 ]
 
 export const ROAD_TEXTURE_LABELS = ROAD_TEXTURES.map(t => t.label)
+
+export const BIOME_BASE_TEXTURES: Record<string, string> = {
+  forest: 'Natural Grass',
+  dirt:   'Ground 02',
+  coast:  'Rocks & Water',
+  crypt:  'Ground Tiles 12',
+  ember:  'Ground 06',
+  frost:  'Ground Stones 02',
+  blank:  'Natural Grass',
+}
 
 const N = ROAD_TEXTURES.length
 
@@ -371,6 +386,97 @@ function RoadOverlay({ texDef, mask, receiveShadow, index, onReady }: RoadOverla
   )
 }
 
+// ── WaterLayer ────────────────────────────────────────────────────────────────
+// Procedural calm water. A MeshStandardMaterial (so it reacts to the scene's real
+// hemisphere + sun light and receives shadows) is patched via onBeforeCompile to
+// animate a rippling surface normal in world space. The moving normals catch the
+// sun as soft glints — top-down this reads as slow, glossy water with no texture
+// asset required. World-space ripples mean the pattern is stable as the camera pans.
+
+// Water wave field — computed once after <color_fragment>. Uses irregular diagonal
+// wave directions, non-harmonic frequencies and domain warping so the surface looks
+// organic rather than a regular axis-aligned grid. Declared WITHOUT a brace scope so
+// wWaterGrad carries over to the normal injection (which runs later in main()).
+// wWaterScale: ripple feature size — lower = larger features.
+const WATER_FRAG_COLOR = /* glsl */`
+  float wWaterScale = 2.5;
+  vec2  wp = vWPos.xz * wWaterScale;
+  float wt = uTime;
+  // domain warp breaks up the regular interference pattern
+  vec2 wq = wp + 0.55 * vec2(sin(wp.y * 0.5 + wt * 0.30), sin(wp.x * 0.45 - wt * 0.27));
+
+  float wHeight = 0.0;
+  vec2  wWaterGrad = vec2(0.0);
+  vec2  D1 = normalize(vec2( 0.80,  0.60)); float a1 = 1.00, f1 = 0.90, s1 =  0.90;
+  vec2  D2 = normalize(vec2(-0.30,  0.95)); float a2 = 0.70, f2 = 1.37, s2 = -0.70;
+  vec2  D3 = normalize(vec2( 0.95, -0.32)); float a3 = 0.50, f3 = 1.93, s3 =  1.10;
+  vec2  D4 = normalize(vec2(-0.70, -0.71)); float a4 = 0.35, f4 = 2.71, s4 = -1.30;
+  float wph;
+  wph = dot(D1, wq) * f1 + s1 * wt; wHeight += a1 * sin(wph); wWaterGrad += a1 * f1 * D1 * cos(wph);
+  wph = dot(D2, wq) * f2 + s2 * wt; wHeight += a2 * sin(wph); wWaterGrad += a2 * f2 * D2 * cos(wph);
+  wph = dot(D3, wq) * f3 + s3 * wt; wHeight += a3 * sin(wph); wWaterGrad += a3 * f3 * D3 * cos(wph);
+  wph = dot(D4, wq) * f4 + s4 * wt; wHeight += a4 * sin(wph); wWaterGrad += a4 * f4 * D4 * cos(wph);
+
+  // Subtle tonal variation around the base teal (kept gentle).
+  float wk = clamp(wHeight / 2.55 * 0.5 + 0.5, 0.0, 1.0);
+  vec3 wDeep    = vec3(0.105, 0.255, 0.320);  // near base colour
+  vec3 wShallow = vec3(0.140, 0.320, 0.395);  // a touch lighter on crests
+  diffuseColor.rgb = mix(wDeep, wShallow, wk);
+`
+
+// Surface normal from the shared wave gradient (computed above). Injected after
+// <normal_fragment_begin> so it overrides the flat geometry normal.
+const WATER_FRAG_RIPPLE = /* glsl */`
+  {
+    float A = 0.07; // ripple steepness — gentle, calm water
+    vec3 wn = normalize(vec3(-wWaterGrad.x * A, 1.0, -wWaterGrad.y * A));
+    normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);
+  }
+`
+
+function WaterLayer({ receiveShadow }: { receiveShadow: boolean }) {
+  const uTime = useRef({ value: 0 })
+
+  const material = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({
+      color:     new THREE.Color('#1f4a5c'), // deep blue-teal
+      roughness: 0.20,                        // glossy → tight, calm sun glints
+      metalness: 0.0,
+    })
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = uTime.current
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
+        .replace(
+          '#include <project_vertex>',
+          '#include <project_vertex>\n  vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+        )
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vWPos;')
+        .replace(
+          '#include <color_fragment>',
+          '#include <color_fragment>\n' + WATER_FRAG_COLOR,
+        )
+        .replace(
+          '#include <normal_fragment_begin>',
+          '#include <normal_fragment_begin>\n' + WATER_FRAG_RIPPLE,
+        )
+    }
+    return m
+  }, [])
+
+  useEffect(() => () => { material.dispose() }, [material])
+
+  useFrame(({ clock }) => { uTime.current.value = clock.elapsedTime })
+
+  return (
+    <mesh rotation={ROAD_ROT} position={[0, -0.02, 0]} receiveShadow={receiveShadow}>
+      <planeGeometry args={[GROUND_SIZE, GROUND_SIZE, 1, 1]} />
+      <primitive object={material} attach="material" />
+    </mesh>
+  )
+}
+
 // ── BaseLayer ─────────────────────────────────────────────────────────────────
 // Inner component so useTexture can be called with a dynamic path inside Suspense.
 
@@ -465,6 +571,8 @@ export function Ground({
   const baseTexRef    = useRef<THREE.Texture | null>(null)
   const onBaseReady   = useCallback((tex: THREE.Texture) => { baseTexRef.current = tex }, [])
 
+  const isWater = baseTexture === WATER_LABEL
+
   const baseColorPath = useMemo(() => {
     const found = BASE_TEXTURES.find(t => t.label === baseTexture)
     return (found ?? BASE_TEXTURES[0]).colorPath
@@ -531,9 +639,13 @@ export function Ground({
 
   return (
     <>
-      <Suspense fallback={null}>
-        <BaseLayer colorPath={baseColorPath} receiveShadow={receiveShadow} onReady={onBaseReady} />
-      </Suspense>
+      {isWater ? (
+        <WaterLayer receiveShadow={receiveShadow} />
+      ) : (
+        <Suspense fallback={null}>
+          <BaseLayer colorPath={baseColorPath} receiveShadow={receiveShadow} onReady={onBaseReady} />
+        </Suspense>
+      )}
 
       {ROAD_TEXTURES.map((def, i) => (
         activeLayers[i] ? (

@@ -9,7 +9,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { Rain } from './Rain'
 import { AmbientEffects } from './AmbientEffects'
 import { Scatter } from './Scatter'
-import { Ground } from './Ground'
+import { Ground, BIOME_BASE_TEXTURES } from './Ground'
 import type { GroundIO, BakeLighting } from './Ground'
 import { BattleGrid, SCREEN_SIZES, SCREEN_SIZE_LABELS } from './BattleGrid'
 import { ObjectPainter } from './ObjectPainter'
@@ -26,6 +26,7 @@ import { useCockpit } from '@/components/cockpit/useCockpit'
 import type { CockpitShadows, CockpitOverrides } from '@/components/cockpit/useCockpit'
 import { CockpitOverlay } from '@/components/cockpit/CockpitOverlay'
 import { PerfSampler, PerformanceOverlay } from './PerformanceHUD'
+import { randomUUID } from '@/lib/uuid'
 
 const DEFAULT_FOV = 45
 
@@ -117,8 +118,12 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   useEffect(() => { fetchAssets() }, [fetchAssets])
 
   const handleSave = useCallback(async () => {
-    let bakedGround: string | undefined
-    if (groundIO.current?.bake) {
+    // Water is animated and can't be baked to a static image. Pass an empty
+    // string to clear any previously stored bake so the display route falls
+    // back to live <Ground> rendering (real-time ripples).
+    const isWater = c.road.baseTexture === 'Water'
+    let bakedGround: string | undefined = isWater ? '' : undefined
+    if (!isWater && groundIO.current?.bake) {
       const az   = c.light.azimuth   * Math.PI / 180
       const el   = c.light.elevation * Math.PI / 180
       const dist = Math.ceil(Math.max(dbScreenW, dbScreenH)) + 8
@@ -140,7 +145,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     setSavedAt(Date.now())
     setSavedFlash(true)
     setTimeout(() => setSavedFlash(false), 1400)
-  }, [dbSave, groundIO, c.light, dbScreenW, dbScreenH])
+  }, [dbSave, groundIO, c.light, c.road.baseTexture, dbScreenW, dbScreenH])
 
   const handleSwitchScene = useCallback(async (id: string) => {
     await switchScene(id)
@@ -169,7 +174,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     const aspect = asset.widthPx && asset.heightPx ? asset.widthPx / asset.heightPx : 1
     const widthIn = 30
     const img: PlacedImage = {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       assetId: asset.id,
       storageKey: asset.storageKey,
       x: 0, z: 0,
@@ -310,6 +315,24 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     if (loadedSceneState.baseTexture          !== undefined) c.setRoad({ baseTexture: loadedSceneState.baseTexture })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedSceneState])
+
+  // On a brand-new (never-saved) scene, apply the biome default base texture.
+  // biomeApplied ref ensures this runs only once per mount, not on every scene switch.
+  const biomeApplied = useRef(false)
+  useEffect(() => {
+    if (biomeApplied.current) return
+    if (!activeSceneId) return           // still loading
+    if (loadedSceneState !== null) return // has saved state — saved value wins
+    biomeApplied.current = true
+    try {
+      const meta = JSON.parse(localStorage.getItem('dnd-campaign-meta') ?? '{}')
+      const biome: string | undefined = meta[tableId]?.biome
+      if (!biome) return
+      const texture = BIOME_BASE_TEXTURES[biome]
+      if (texture) c.setRoad({ baseTexture: texture })
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSceneId, loadedSceneState])
 
   // Publish pause state immediately when it changes
   useEffect(() => { publishPause(c.paused) }, [c.paused, publishPause])
