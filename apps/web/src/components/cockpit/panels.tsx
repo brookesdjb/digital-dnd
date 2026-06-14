@@ -80,8 +80,9 @@ const TEX_SWATCHES: Record<string, [string, string]> = {
   'Wood Planks':      ['#8a6038', '#6a4926'],
 }
 
-const FOG_COLORS = ['#0a0a1a', '#1a1320', '#0d1a16', '#201a10', '#14141a']
-const SUN_COLORS = ['#fff4e0', '#ffd9a0', '#ff9e6b', '#cfe0ff', '#caa15a']
+const FOG_COLORS    = ['#0a0a1a', '#1a1320', '#0d1a16', '#201a10', '#14141a']
+const SUN_COLORS    = ['#fff4e0', '#ffd9a0', '#ff9e6b', '#cfe0ff', '#caa15a']
+const CANDLE_COLORS = ['#ff8c32', '#ffb060', '#ff6020', '#ffd050', '#e06828', '#ffcc88']
 
 const SHADOW_MODES = ['Blob', 'Soft Shadows', 'SSAO', 'Soft Shadows + SSAO']
 
@@ -308,6 +309,33 @@ export function WeatherControls({ c }: { c: CockpitState }) {
         <Slider label="Strength" value={grass.windStrength} min={0} max={3} step={0.1}
           onChange={v => setGrass({ windStrength: v })} fmt={v => v.toFixed(1)} />
       </div>
+    </div>
+  )
+}
+
+// ── CandleControls ────────────────────────────────────────────────────────────
+
+export function CandleControls({ c }: { c: CockpitState }) {
+  const { candles, setCandles, placedCandles, setPlacedCandles } = c
+  return (
+    <div className="ck-stack">
+      <span className="ck-sub-head">Global ambient flicker</span>
+      <Slider label="Intensity" value={candles.globalIntensity} min={0} max={2} step={0.05}
+        onChange={v => setCandles({ globalIntensity: v })} fmt={v => v.toFixed(2) + '×'} />
+      <ColorDots value={candles.color} colors={CANDLE_COLORS} onChange={v => setCandles({ color: v })} />
+      <span className="ck-sub-head">Placed point lights ({placedCandles.length})</span>
+      <Segmented full
+        options={[{ value: 'off', label: 'Off' }, { value: 'place', label: 'Place' }, { value: 'erase', label: 'Erase' }]}
+        value={!candles.placeMode ? 'off' : candles.eraseMode ? 'erase' : 'place'}
+        onChange={v => setCandles({ placeMode: v !== 'off', eraseMode: v === 'erase' })}
+      />
+      <div className="ck-split">
+        <Slider label="Radius" value={candles.placeRadius} min={2} max={40} step={0.5}
+          onChange={v => setCandles({ placeRadius: v })} fmt={v => v + '"'} />
+        <Slider label="Intensity" value={candles.placeIntensity} min={0.1} max={3} step={0.1}
+          onChange={v => setCandles({ placeIntensity: v })} fmt={v => v.toFixed(1) + '×'} />
+      </div>
+      <Btn variant="ghost" full icon={Icons.trash} onClick={() => setPlacedCandles([])}>Clear all</Btn>
     </div>
   )
 }

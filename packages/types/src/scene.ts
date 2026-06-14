@@ -1,5 +1,14 @@
 export type ShadowType = 'tree' | 'dead' | 'bush' | 'cover'
 
+export interface PlacedCandleLight {
+  id:        string
+  x:         number
+  z:         number
+  color:     string
+  radius:    number   // point-light distance in world units (inches)
+  intensity: number
+}
+
 export interface SceneState {
   showGrid:          boolean
   rainIntensity:     number
@@ -32,6 +41,9 @@ export interface SceneState {
   firefliesIntensity?: number
   ashIntensity?:       number
   lightningIntensity?: number
+  candleIntensity?:    number
+  candleColor?:        string
+  placedCandles?:      PlacedCandleLight[]
   scatterSeed?:          number
   scatterEnabled?:       boolean
   scatterDensityScale?:  number

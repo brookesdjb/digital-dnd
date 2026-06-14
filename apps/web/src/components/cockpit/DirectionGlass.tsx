@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { Icons, Segmented, ago } from './primitives'
-import { FogControls, ObjectControls, RoadControls, ImagesControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel } from './panels'
+import { FogControls, ObjectControls, RoadControls, ImagesControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel, CandleControls } from './panels'
 import type { CockpitState, CockpitTool } from './useCockpit'
 import type { PanelActions } from './panels'
 
@@ -31,7 +31,7 @@ function GlassSection({ title, icon: Icon, open, onToggle, children }: SectionPr
 interface Props { c: CockpitState; actions: PanelActions; savedAt: number }
 
 export function DirectionGlass({ c, actions, savedAt }: Props) {
-  const [open, setOpen] = useState({ tool: true, mood: true, weather: false, scenes: false, view: false, shadows: false })
+  const [open, setOpen] = useState({ tool: true, mood: true, weather: false, candle: false, scenes: false, view: false, shadows: false })
   const toggle = (k: keyof typeof open) => setOpen(o => ({ ...o, [k]: !o[k] }))
   const scene = actions.scenes.find(s => s.id === actions.activeSceneId) ?? actions.scenes[0]
 
@@ -102,6 +102,10 @@ export function DirectionGlass({ c, actions, savedAt }: Props) {
           <GlassSection id="weather" title="Weather & Wind" icon={Icons.rain}
             open={open.weather} onToggle={() => toggle('weather')}>
             <WeatherControls c={c} />
+          </GlassSection>
+          <GlassSection id="candle" title="Candle Lights" icon={Icons.candle}
+            open={open.candle} onToggle={() => toggle('candle')}>
+            <CandleControls c={c} />
           </GlassSection>
           <GlassSection id="scenes" title="Scenes" icon={Icons.layers}
             open={open.scenes} onToggle={() => toggle('scenes')}>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { GroundIO } from '@/components/scene/Ground'
 import type { FogIO } from '@/components/scene/FogLayer'
-import type { PlacedObject, PlacedImage, SceneState } from '@dnd-table/types'
+import type { PlacedObject, PlacedImage, PlacedCandleLight, SceneState } from '@dnd-table/types'
 import { DEFAULT_BASE_TEXTURE } from '@/components/scene/Ground'
 import { remoteLog } from '@/lib/log'
 
@@ -56,6 +56,9 @@ export function useSceneSync(
   const [scatterDensityScale,  setScatterDensityScale]  = useState(1.0)
   const [scatterErasedIndices, setScatterErasedIndices] = useState<number[]>([])
   const [baseTexture,          setBaseTexture]          = useState(DEFAULT_BASE_TEXTURE)
+  const [candleIntensity,      setCandleIntensity]      = useState(0)
+  const [candleColor,          setCandleColor]          = useState('#ff8c32')
+  const [placedCandles,        setPlacedCandles]        = useState<PlacedCandleLight[]>([])
 
   // Pending buffers handle the race where a Realtime message arrives before ioRefs mount.
   const pendingTerrain = useRef<string[] | null>(null)
@@ -98,6 +101,9 @@ export function useSceneSync(
     if (s.scatterDensityScale  !== undefined) setScatterDensityScale(s.scatterDensityScale)
     if (s.scatterErasedIndices !== undefined) setScatterErasedIndices(s.scatterErasedIndices)
     if (s.baseTexture          !== undefined) setBaseTexture(s.baseTexture)
+    setCandleIntensity(s.candleIntensity ?? 0)
+    setCandleColor(s.candleColor ?? '#ff8c32')
+    setPlacedCandles(s.placedCandles ?? [])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -296,6 +302,9 @@ export function useSceneSync(
         if (p.scatterDensityScale  !== undefined) setScatterDensityScale(p.scatterDensityScale as number)
         if (p.scatterErasedIndices !== undefined) setScatterErasedIndices(p.scatterErasedIndices as number[])
         if (p.baseTexture          !== undefined) setBaseTexture(p.baseTexture             as string)
+        if (p.candleIntensity      !== undefined) setCandleIntensity(p.candleIntensity     as number)
+        if (p.candleColor          !== undefined) setCandleColor(p.candleColor             as string)
+        if (p.placedCandles        !== undefined) setPlacedCandles(p.placedCandles         as PlacedCandleLight[])
       })
       .subscribe((status) => {
         if (cancelled) return
@@ -341,5 +350,6 @@ export function useSceneSync(
     bakedGround, mapImages,
     isConnected,
     scatterSeed, scatterEnabled, scatterDensityScale, scatterErasedIndices, baseTexture,
+    candleIntensity, candleColor, placedCandles,
   }
 }

@@ -2,11 +2,11 @@
 
 import React, { useState } from 'react'
 import { Icons, ago } from './primitives'
-import { FogControls, ObjectControls, RoadControls, ImagesControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel } from './panels'
+import { FogControls, ObjectControls, RoadControls, ImagesControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel, CandleControls } from './panels'
 import type { CockpitState } from './useCockpit'
 import type { PanelActions } from './panels'
 
-type RailId = 'scenes' | 'fog' | 'object' | 'road' | 'image' | 'light' | 'weather' | 'view' | 'shadows'
+type RailId = 'scenes' | 'fog' | 'object' | 'road' | 'image' | 'light' | 'weather' | 'candle' | 'view' | 'shadows'
 
 const RAIL_ITEMS: Array<{ id: RailId; icon: (p: { s?: number }) => React.ReactElement; label: string }> = [
   { id: 'scenes',  icon: Icons.layers,  label: 'Scenes'   },
@@ -16,6 +16,7 @@ const RAIL_ITEMS: Array<{ id: RailId; icon: (p: { s?: number }) => React.ReactEl
   { id: 'image',   icon: Icons.image,   label: 'Images'   },
   { id: 'light',   icon: Icons.sun,     label: 'Lighting' },
   { id: 'weather', icon: Icons.rain,    label: 'Weather'  },
+  { id: 'candle',  icon: Icons.candle,  label: 'Candles'  },
   { id: 'view',    icon: Icons.grid,    label: 'View'     },
   { id: 'shadows', icon: Icons.shadows, label: 'Shadows'  },
 ]
@@ -23,7 +24,7 @@ const RAIL_ITEMS: Array<{ id: RailId; icon: (p: { s?: number }) => React.ReactEl
 const FLYOUT_TITLES: Record<RailId, string> = {
   scenes: 'SCENES', fog: 'FOG OF WAR', object: 'OBJECT PAINTING',
   road: 'TERRAIN PAINTING', image: 'MAP IMAGES',
-  light: 'LIGHTING & MOOD', weather: 'WEATHER & WIND',
+  light: 'LIGHTING & MOOD', weather: 'WEATHER & WIND', candle: 'CANDLE LIGHTS',
   view: 'VIEW & GRID', shadows: 'SHADOWS',
 }
 
@@ -37,6 +38,7 @@ function FlyoutBody({ id, c, actions }: FlyoutBodyProps) {
     case 'image':   return <ImagesControls  c={c} actions={actions} />
     case 'light':   return <LightingControls c={c} />
     case 'weather': return <WeatherControls c={c} />
+    case 'candle':  return <CandleControls  c={c} />
     case 'view':    return <ViewControls    c={c} actions={actions} />
     case 'shadows': return <ShadowControls  c={c} />
   }

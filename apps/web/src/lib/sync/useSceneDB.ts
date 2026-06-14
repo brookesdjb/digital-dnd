@@ -39,6 +39,9 @@ export function useSceneDB(
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
   const [loadedSceneState, setLoadedSceneState] = useState<SceneState | null>(null)
   const [loadedMapImages,  setLoadedMapImages]  = useState<PlacedImage[] | null>(null)
+  // Increments every time a scene finishes loading (initial load or switch).
+  // ControlScene watches this so the restore effect fires even when loadedSceneState goes null→null.
+  const [sceneVersion, setSceneVersion] = useState(0)
   // Stable client — createClient() must not be called on every render (breaks useCallback deps).
   const supabase = useMemo(() => createClient(), [])
 
@@ -105,10 +108,9 @@ export function useSceneDB(
       const objects = scene.objects as unknown[] | null
 
       bakedGroundRef.current = terrain?.bakedGround ?? undefined
-      if (terrain?.sceneState) {
-        sceneStateRef.current = terrain.sceneState
-        setLoadedSceneState(terrain.sceneState)
-      }
+      if (terrain?.sceneState) sceneStateRef.current = terrain.sceneState
+      setLoadedSceneState(terrain?.sceneState ?? null)
+      setSceneVersion(v => v + 1)
       mapImagesRef.current = terrain?.mapImages ?? []
       setLoadedMapImages(terrain?.mapImages ?? [])
 
@@ -213,10 +215,9 @@ export function useSceneDB(
       const fog_mask = scene.fog_mask as string | null
 
       bakedGroundRef.current = terrain?.bakedGround ?? undefined
-      if (terrain?.sceneState) {
-        sceneStateRef.current = terrain.sceneState
-        setLoadedSceneState(terrain.sceneState)
-      }
+      if (terrain?.sceneState) sceneStateRef.current = terrain.sceneState
+      setLoadedSceneState(terrain?.sceneState ?? null)
+      setSceneVersion(v => v + 1)
       mapImagesRef.current = terrain?.mapImages ?? []
       setLoadedMapImages(terrain?.mapImages ?? [])
 
@@ -288,7 +289,7 @@ export function useSceneDB(
 
   return {
     save, scheduleSave, scheduleStateSave, sceneIdRef, setBgColor, setSceneState, setMapImages,
-    loadedSceneState, loadedMapImages, screenW, screenH, updateScreenDims,
+    loadedSceneState, sceneVersion, loadedMapImages, screenW, screenH, updateScreenDims,
     scenes, activeSceneId, switchScene, createScene, deleteScene, renameScene,
   }
 }

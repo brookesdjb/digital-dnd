@@ -2,11 +2,11 @@
 
 import React, { useState } from 'react'
 import { Icons, ago } from './primitives'
-import { FogControls, ObjectControls, RoadControls, ImagesControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel } from './panels'
+import { FogControls, ObjectControls, RoadControls, ImagesControls, LightingControls, WeatherControls, ViewControls, ShadowControls, ScenePanel, CandleControls } from './panels'
 import type { CockpitState } from './useCockpit'
 import type { PanelActions } from './panels'
 
-type PanelId = 'fog' | 'object' | 'road' | 'image' | 'light' | 'weather' | 'scenes' | 'view' | 'shadows' | null
+type PanelId = 'fog' | 'object' | 'road' | 'image' | 'light' | 'weather' | 'candle' | 'scenes' | 'view' | 'shadows' | null
 
 const TRAY_META: Record<NonNullable<PanelId>, { title: string; icon: (p: { s?: number }) => React.ReactElement; wide?: boolean }> = {
   fog:     { title: 'Fog of War',      icon: Icons.fog,    wide: true },
@@ -15,6 +15,7 @@ const TRAY_META: Record<NonNullable<PanelId>, { title: string; icon: (p: { s?: n
   image:   { title: 'Map Images',      icon: Icons.image,  wide: true },
   light:   { title: 'Lighting & Mood', icon: Icons.sun,    wide: true },
   weather: { title: 'Weather & Wind',  icon: Icons.rain    },
+  candle:  { title: 'Candle Lights',   icon: Icons.candle  },
   scenes:  { title: 'Scenes',          icon: Icons.layers  },
   view:    { title: 'View & Grid',     icon: Icons.grid    },
   shadows: { title: 'Shadows',         icon: Icons.shadows },
@@ -34,6 +35,7 @@ function DockTray({ panel, c, actions, onClose }: DockTrayProps) {
     case 'image':   body = <ImagesControls  c={c} actions={actions} />; break
     case 'light':   body = <LightingControls c={c} />; break
     case 'weather': body = <WeatherControls c={c} />; break
+    case 'candle':  body = <CandleControls  c={c} />; break
     case 'scenes':  body = <ScenePanel      actions={actions} />; break
     case 'view':    body = <ViewControls    c={c} actions={actions} />; break
     case 'shadows': body = <ShadowControls  c={c} />; break
@@ -108,7 +110,8 @@ export function DirectionDock({ c, actions, savedAt }: Props) {
         <div className="dk-sep" />
         <div className="dk-group">
           <DockTool icon={Icons.sun}  label="Mood"    active={panel === 'light'}   onClick={() => togglePanel('light')} />
-          <DockTool icon={Icons.rain} label="Weather" active={panel === 'weather'} onClick={() => togglePanel('weather')} />
+          <DockTool icon={Icons.rain}    label="Weather" active={panel === 'weather'} onClick={() => togglePanel('weather')} />
+          <DockTool icon={Icons.candle}  label="Candles" active={panel === 'candle'}  onClick={() => togglePanel('candle')} />
           <DockTool icon={Icons.shadows} label="Shadows" active={panel === 'shadows'} onClick={() => togglePanel('shadows')} />
         </div>
         <div className="dk-sep" />

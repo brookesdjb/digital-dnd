@@ -17,7 +17,9 @@ import { BattleGrid } from './BattleGrid'
 import { FogLayer } from './FogLayer'
 import type { FogIO } from './FogLayer'
 import { PlacedObjectsRenderer } from './PlacedObjectsRenderer'
+import { PlacedCandleLights } from './PlacedCandleLights'
 import { MapImages } from './MapImages'
+import { SceneSounds } from './SceneSounds'
 import { useSceneSync } from '@/lib/sync/useSceneSync'
 import { PerfSampler, PerformanceOverlay } from './PerformanceHUD'
 
@@ -126,6 +128,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
     windSpeed, windStrength,
     fowColor, fowDisplayOpacity,
     embersIntensity, dustIntensity, snowIntensity, mistIntensity, firefliesIntensity, ashIntensity, lightningIntensity,
+    candleIntensity, candleColor, placedCandles,
     bakedGround, mapImages,
     isConnected,
     scatterSeed, scatterEnabled, scatterDensityScale, scatterErasedIndices, baseTexture,
@@ -236,6 +239,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
             castShadow={useSoftShadows}
           />
           <MapImages images={mapImages} />
+          <PlacedCandleLights candles={placedCandles} showIndicators={false} />
         </Suspense>
 
         <Rain intensity={rainIntensity} fieldSize={fieldSize} />
@@ -250,6 +254,8 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
           fireflies={firefliesIntensity}
           ash={ashIntensity}
           lightning={lightningIntensity}
+          candle={candleIntensity}
+          candleColor={candleColor}
         />
 
         {showPerf && <PerfSampler />}
@@ -285,6 +291,7 @@ export default function DisplayScene({ tableId }: DisplaySceneProps) {
           Waiting for GM
         </div>
       )}
+      <SceneSounds rain={rainIntensity} lightning={lightningIntensity} />
     </div>
   )
 }

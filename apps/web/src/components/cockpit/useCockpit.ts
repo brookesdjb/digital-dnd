@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { OBJECT_CATALOG } from '@/components/scene/ObjectPainter'
 import { ROAD_TEXTURE_LABELS, DEFAULT_BASE_TEXTURE } from '@/components/scene/Ground'
 import { SCREEN_SIZE_LABELS } from '@/components/scene/BattleGrid'
+import type { PlacedCandleLight } from '@dnd-table/types'
 
 export type CockpitTool = 'select' | 'fog' | 'object' | 'road' | 'image'
 
@@ -69,6 +70,15 @@ export interface CockpitWeather {
 }
 export interface CockpitGrass   { windSpeed: number; windStrength: number }
 
+export interface CockpitCandles {
+  globalIntensity: number
+  color:           string
+  placeMode:       boolean
+  eraseMode:       boolean
+  placeRadius:     number
+  placeIntensity:  number
+}
+
 export interface CockpitView {
   grid: boolean
   border: boolean
@@ -98,6 +108,8 @@ export interface CockpitState {
   view:    CockpitView
   shadows: CockpitShadows
   scatter: CockpitScatter
+  candles:       CockpitCandles
+  placedCandles: PlacedCandleLight[]
   setTool:    (t: CockpitTool) => void
   setPaused:  (p: boolean) => void
   setFog:     (p: Partial<CockpitFog>) => void
@@ -109,6 +121,8 @@ export interface CockpitState {
   setView:    (p: Partial<CockpitView>) => void
   setShadows: (p: Partial<CockpitShadows>) => void
   setScatter: (p: Partial<CockpitScatter>) => void
+  setCandles:       (p: Partial<CockpitCandles>) => void
+  setPlacedCandles: (c: PlacedCandleLight[]) => void
 }
 
 export interface LightPreset {
@@ -168,6 +182,7 @@ export interface CockpitOverrides {
   weather?: Partial<CockpitWeather>
   shadows?: Partial<CockpitShadows>
   grass?:   Partial<CockpitGrass>
+  candles?: Partial<CockpitCandles>
 }
 
 function patch<T>(setter: React.Dispatch<React.SetStateAction<T>>) {
@@ -208,6 +223,16 @@ export function useCockpit(overrides?: CockpitOverrides): CockpitState {
     mode: 'Blob', radius: 8, aoRadius: 1.5, aoIntensity: 5.0, blobSize: 1.0, blobOpacity: 1.0,
     ...overrides?.shadows,
   })
+  const [candles, _setCandles] = useState<CockpitCandles>({
+    globalIntensity: 0,
+    color: '#ff8c32',
+    placeMode: false,
+    eraseMode: false,
+    placeRadius: 8,
+    placeIntensity: 1.2,
+    ...overrides?.candles,
+  })
+  const [placedCandles, setPlacedCandles] = useState<PlacedCandleLight[]>([])
 
   // Auto-snap scale when selected model changes
   useEffect(() => {
@@ -218,6 +243,7 @@ export function useCockpit(overrides?: CockpitOverrides): CockpitState {
 
   return {
     tool, paused, fog, object, road, light, weather, grass, view, shadows, scatter,
+    candles, placedCandles,
     setTool, setPaused,
     setFog:     patch(_setFog),
     setObject:  patch(_setObject),
@@ -228,5 +254,7 @@ export function useCockpit(overrides?: CockpitOverrides): CockpitState {
     setView:    patch(_setView),
     setShadows: patch(_setShadows),
     setScatter: patch(_setScatter),
+    setCandles: patch(_setCandles),
+    setPlacedCandles,
   }
 }

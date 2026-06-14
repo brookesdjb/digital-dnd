@@ -9,11 +9,13 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { Rain } from './Rain'
 import { AmbientEffects } from './AmbientEffects'
 import { Scatter } from './Scatter'
-import { Ground, BIOME_BASE_TEXTURES } from './Ground'
+import { Ground, BIOME_BASE_TEXTURES, DEFAULT_BASE_TEXTURE } from './Ground'
 import type { GroundIO, BakeLighting } from './Ground'
 import { BattleGrid, SCREEN_SIZES, SCREEN_SIZE_LABELS } from './BattleGrid'
 import { ObjectPainter } from './ObjectPainter'
 import type { ObjectsIO } from './ObjectPainter'
+import { PlacedCandleLights, CandlePlacer } from './PlacedCandleLights'
+import type { PlacedCandleLight } from '@dnd-table/types'
 import { FogLayer } from './FogLayer'
 import type { FogIO } from './FogLayer'
 import { MapImages } from './MapImages'
@@ -22,9 +24,10 @@ import { useScenePublish } from '@/lib/sync/useScenePublish'
 import { useAssets } from '@/lib/useAssets'
 import type { PlacedImage } from '@dnd-table/types'
 import type { AssetRecord } from '@/lib/useAssets'
-import { useCockpit } from '@/components/cockpit/useCockpit'
+import { useCockpit, LIGHT_PRESETS } from '@/components/cockpit/useCockpit'
 import type { CockpitShadows, CockpitOverrides } from '@/components/cockpit/useCockpit'
 import { CockpitOverlay } from '@/components/cockpit/CockpitOverlay'
+import { SceneSounds } from './SceneSounds'
 import { PerfSampler, PerformanceOverlay } from './PerformanceHUD'
 import { randomUUID } from '@/lib/uuid'
 
@@ -101,7 +104,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const {
     save: dbSave, scheduleSave, scheduleStateSave, sceneIdRef, setBgColor, setSceneState,
     setMapImages: setMapImagesRef,
-    loadedSceneState, loadedMapImages, screenW: dbScreenW, screenH: dbScreenH,
+    loadedSceneState, sceneVersion, loadedMapImages, screenW: dbScreenW, screenH: dbScreenH,
     scenes, activeSceneId, switchScene, createScene, deleteScene, renameScene,
     updateScreenDims,
   } = useSceneDB(tableId, groundIO, objectsIO, fogIO)
@@ -213,6 +216,27 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     setMapImages(prev => prev.map(img => img.id === id ? { ...img, x, z } : img))
   }, [])
 
+  const handlePlaceCandle = useCallback((x: number, z: number) => {
+    const newCandle: PlacedCandleLight = {
+      id: randomUUID(),
+      x, z,
+      color:     c.candles.color,
+      radius:    c.candles.placeRadius,
+      intensity: c.candles.placeIntensity,
+    }
+    c.setPlacedCandles([...c.placedCandles, newCandle])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.candles.color, c.candles.placeRadius, c.candles.placeIntensity, c.placedCandles, c.setPlacedCandles])
+
+  const handleRemoveCandle = useCallback((x: number, z: number) => {
+    if (c.placedCandles.length === 0) return
+    const nearest = c.placedCandles.reduce((best, cv) =>
+      Math.hypot(cv.x - x, cv.z - z) < Math.hypot(best.x - x, best.z - z) ? cv : best
+    )
+    c.setPlacedCandles(c.placedCandles.filter(cv => cv.id !== nearest.id))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.placedCandles, c.setPlacedCandles])
+
   const handleImagesDragEnd = useCallback(() => {
     setMapImages(prev => { onImagesChange(prev); return prev })
   }, [onImagesChange])
@@ -259,6 +283,9 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
       firefliesIntensity: c.weather.fireflies,
       ashIntensity:       c.weather.ash,
       lightningIntensity: c.weather.lightning,
+      candleIntensity:    c.candles.globalIntensity,
+      candleColor:        c.candles.color,
+      placedCandles:      c.placedCandles,
     }
     schedulePublishState(state)
     setSceneState(state)
@@ -267,54 +294,80 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
     c.view.grid, c.weather, c.light, c.shadows, c.grass,
     c.fog.color, c.fog.playerOpacity,
     c.scatter, c.road.baseTexture,
+    c.candles.globalIntensity, c.candles.color, c.placedCandles,
     schedulePublishState, setSceneState, scheduleStateSave,
   ])
 
-  // Restore cockpit state when DB loads (refresh or scene switch).
+  // Restore cockpit state whenever a scene finishes loading (sceneVersion increments on every
+  // initial load and scene switch). If the scene has saved state, restore it; if it's blank,
+  // reset every cockpit field to defaults so nothing leaks from the previous scene.
   // Skipped when a profiling preset is active — preset values must not be overridden.
   useEffect(() => {
-    if (!loadedSceneState || presetOverride) return
-    c.setLight({
-      hemSkyColor:    loadedSceneState.hemSkyColor,
-      hemGroundColor: loadedSceneState.hemGroundColor,
-      hemIntensity:   loadedSceneState.hemIntensity,
-      sunColor:       loadedSceneState.sunColor,
-      sunIntensity:   loadedSceneState.sunIntensity,
-      azimuth:        loadedSceneState.sunAzimuth,
-      elevation:      loadedSceneState.sunElevation,
-      fogEnabled:     loadedSceneState.fogEnabled,
-      fogColor:       loadedSceneState.fogColor,
-      fogDensity:     loadedSceneState.fogDensity,
-      bgColor:        loadedSceneState.bgColor,
-    })
-    c.setShadows({
-      mode:       loadedSceneState.shadowMode as CockpitShadows['mode'],
-      radius:     loadedSceneState.shadowRadius,
-      aoRadius:   loadedSceneState.aoRadius,
-      aoIntensity: loadedSceneState.aoIntensity,
-      blobSize:   loadedSceneState.blobSize,
-      blobOpacity: loadedSceneState.blobOpacity,
-    })
-    c.setWeather({
-      rain:      loadedSceneState.rainIntensity,
-      embers:    loadedSceneState.embersIntensity    ?? 0,
-      dust:      loadedSceneState.dustIntensity      ?? 0,
-      snow:      loadedSceneState.snowIntensity      ?? 0,
-      mist:      loadedSceneState.mistIntensity      ?? 0,
-      fireflies: loadedSceneState.firefliesIntensity ?? 0,
-      ash:       loadedSceneState.ashIntensity       ?? 0,
-      lightning: loadedSceneState.lightningIntensity ?? 0,
-    })
-    c.setGrass({ windSpeed: loadedSceneState.windSpeed, windStrength: loadedSceneState.windStrength })
-    c.setFog({ color: loadedSceneState.fowColor, playerOpacity: loadedSceneState.fowDisplayOpacity })
-    c.setView({ grid: loadedSceneState.showGrid, gridLineWidth: loadedSceneState.gridLineWidth ?? 1.0 })
-    if (loadedSceneState.scatterSeed          !== undefined) c.setScatter({ seed:          loadedSceneState.scatterSeed })
-    if (loadedSceneState.scatterEnabled       !== undefined) c.setScatter({ enabled:       loadedSceneState.scatterEnabled })
-    if (loadedSceneState.scatterDensityScale  !== undefined) c.setScatter({ densityScale:  loadedSceneState.scatterDensityScale })
-    if (loadedSceneState.scatterErasedIndices !== undefined) c.setScatter({ erasedIndices: loadedSceneState.scatterErasedIndices })
-    if (loadedSceneState.baseTexture          !== undefined) c.setRoad({ baseTexture: loadedSceneState.baseTexture })
+    if (presetOverride || !activeSceneId) return
+
+    if (loadedSceneState) {
+      c.setLight({
+        hemSkyColor:    loadedSceneState.hemSkyColor,
+        hemGroundColor: loadedSceneState.hemGroundColor,
+        hemIntensity:   loadedSceneState.hemIntensity,
+        sunColor:       loadedSceneState.sunColor,
+        sunIntensity:   loadedSceneState.sunIntensity,
+        azimuth:        loadedSceneState.sunAzimuth,
+        elevation:      loadedSceneState.sunElevation,
+        fogEnabled:     loadedSceneState.fogEnabled,
+        fogColor:       loadedSceneState.fogColor,
+        fogDensity:     loadedSceneState.fogDensity,
+        bgColor:        loadedSceneState.bgColor,
+      })
+      c.setShadows({
+        mode:        loadedSceneState.shadowMode as CockpitShadows['mode'],
+        radius:      loadedSceneState.shadowRadius,
+        aoRadius:    loadedSceneState.aoRadius,
+        aoIntensity: loadedSceneState.aoIntensity,
+        blobSize:    loadedSceneState.blobSize,
+        blobOpacity: loadedSceneState.blobOpacity,
+      })
+      c.setWeather({
+        rain:      loadedSceneState.rainIntensity,
+        embers:    loadedSceneState.embersIntensity    ?? 0,
+        dust:      loadedSceneState.dustIntensity      ?? 0,
+        snow:      loadedSceneState.snowIntensity      ?? 0,
+        mist:      loadedSceneState.mistIntensity      ?? 0,
+        fireflies: loadedSceneState.firefliesIntensity ?? 0,
+        ash:       loadedSceneState.ashIntensity       ?? 0,
+        lightning: loadedSceneState.lightningIntensity ?? 0,
+      })
+      c.setGrass({ windSpeed: loadedSceneState.windSpeed, windStrength: loadedSceneState.windStrength })
+      c.setFog({ color: loadedSceneState.fowColor, playerOpacity: loadedSceneState.fowDisplayOpacity })
+      c.setView({ grid: loadedSceneState.showGrid, gridLineWidth: loadedSceneState.gridLineWidth ?? 1.0 })
+      if (loadedSceneState.scatterSeed          !== undefined) c.setScatter({ seed:          loadedSceneState.scatterSeed })
+      if (loadedSceneState.scatterEnabled       !== undefined) c.setScatter({ enabled:       loadedSceneState.scatterEnabled })
+      if (loadedSceneState.scatterDensityScale  !== undefined) c.setScatter({ densityScale:  loadedSceneState.scatterDensityScale })
+      if (loadedSceneState.scatterErasedIndices !== undefined) c.setScatter({ erasedIndices: loadedSceneState.scatterErasedIndices })
+      if (loadedSceneState.baseTexture          !== undefined) c.setRoad({ baseTexture: loadedSceneState.baseTexture })
+      c.setCandles({
+        globalIntensity: loadedSceneState.candleIntensity ?? 0,
+        color:           loadedSceneState.candleColor     ?? '#ff8c32',
+      })
+      c.setPlacedCandles(loadedSceneState.placedCandles ?? [])
+    } else {
+      // Blank scene (never saved) — reset everything to defaults so nothing bleeds from the previous scene.
+      const day = LIGHT_PRESETS[1]
+      c.setLight({ ...day, preset: day.id })
+      c.setShadows({ mode: 'Blob', radius: 8, aoRadius: 1.5, aoIntensity: 5.0, blobSize: 1.0, blobOpacity: 1.0 })
+      c.setWeather({ rain: 1.0, embers: 0, dust: 0, snow: 0, mist: 0, fireflies: 0, ash: 0, lightning: 0 })
+      c.setGrass({ windSpeed: 1.2, windStrength: 1.0 })
+      c.setFog({ color: '#0a0a1a', playerOpacity: 0.92 })
+      c.setView({ grid: false, gridLineWidth: 1.0 })
+      c.setScatter({ seed: 0x5CA77E8D, enabled: true, densityScale: 1.0, erasedIndices: [] })
+      c.setRoad({ baseTexture: DEFAULT_BASE_TEXTURE })
+      c.setCandles({ globalIntensity: 0, color: '#ff8c32', placeMode: false, eraseMode: false })
+      c.setPlacedCandles([])
+    }
+  // sceneVersion is the true dependency — it fires on every scene load/switch so
+  // we always react even when loadedSceneState goes null → null between blank scenes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadedSceneState])
+  }, [sceneVersion])
 
   // On a brand-new (never-saved) scene, apply the biome default base texture.
   // biomeApplied ref ensures this runs only once per mount, not on every scene switch.
@@ -386,9 +439,10 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
   const fogEraseMode   = c.fog.mode === 'reveal' || c.fog.mode === 'erase'
   const paintMode      = c.tool === 'road'
   const imagePaintMode = c.tool === 'image'
+  const candlePlaceMode = c.candles.placeMode
 
   const scatterEraseMode = c.scatter.eraseMode && c.scatter.enabled
-  const painting = paintMode || objectPaintMode || fogPaintMode || imagePaintMode || scatterEraseMode
+  const painting = paintMode || objectPaintMode || fogPaintMode || imagePaintMode || scatterEraseMode || candlePlaceMode
   const cursor   = (paintMode || objectPaintMode || fogPaintMode || scatterEraseMode) ? 'none' : 'auto'
 
   return (
@@ -485,6 +539,13 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
             onMove={handleMoveImage}
             onChange={handleImagesDragEnd}
           />
+          <CandlePlacer
+            enabled={candlePlaceMode}
+            eraseMode={c.candles.eraseMode}
+            onPlace={handlePlaceCandle}
+            onRemove={handleRemoveCandle}
+          />
+          <PlacedCandleLights candles={c.placedCandles} showIndicators />
         </Suspense>
 
         <Rain intensity={c.weather.rain} fieldSize={fieldSize} />
@@ -499,6 +560,8 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
           fireflies={c.weather.fireflies}
           ash={c.weather.ash}
           lightning={c.weather.lightning}
+          candle={c.candles.globalIntensity}
+          candleColor={c.candles.color}
         />
 
         {useSSAO && (
@@ -565,6 +628,7 @@ export default function ControlScene({ tableId }: ControlSceneProps) {
           onRemoveImage:  handleRemoveImage,
         }}
       />
+      <SceneSounds rain={c.weather.rain} lightning={c.weather.lightning} />
     </div>
   )
 }

@@ -697,6 +697,37 @@ function Lightning({ intensity, fieldSize }: LightningProps) {
   )
 }
 
+// ── CandleAmbient ─────────────────────────────────────────────────────────────
+// Global ambient candle flicker — a single warm PointLight at scene centre that
+// pulses with organic noise. Layered sin waves give a convincing flame feel
+// without actual Perlin noise.
+
+interface CandleAmbientProps { intensity: number; color: string }
+
+function CandleAmbient({ intensity, color }: CandleAmbientProps) {
+  const lightRef = useRef<THREE.PointLight>(null)
+  const phase    = useMemo(() => Math.random() * Math.PI * 2, [])
+
+  useFrame(() => {
+    const light = lightRef.current
+    if (!light) return
+    if (intensity === 0) { light.intensity = 0; return }
+    const t = performance.now() * 0.001
+    const flicker =
+      0.50 +
+      0.20 * Math.sin(t * 3.1  + phase) +
+      0.15 * Math.sin(t * 7.7  + phase * 1.3) +
+      0.10 * Math.sin(t * 13.3 + phase * 2.1) +
+      0.05 * Math.sin(t * 23.1 + phase * 3.7)
+    light.intensity = intensity * flicker * 3.0
+  })
+
+  return (
+    <pointLight ref={lightRef} color={color} position={[0, 4, 0]}
+      distance={80} decay={1} castShadow={false} />
+  )
+}
+
 // ── Composite export ──────────────────────────────────────────────────────────
 
 export interface AmbientEffectsProps {
@@ -710,11 +741,14 @@ export interface AmbientEffectsProps {
   fireflies: number
   ash:       number
   lightning: number
+  candle:      number
+  candleColor: string
 }
 
 export function AmbientEffects({
   fieldSize, hemSkyColor, hemGroundColor,
   embers, dust, snow, mist, fireflies, ash, lightning,
+  candle, candleColor,
 }: AmbientEffectsProps) {
   return (
     <>
@@ -725,6 +759,7 @@ export function AmbientEffects({
       <Fireflies    intensity={fireflies} fieldSize={fieldSize} />
       <Ash          intensity={ash}       fieldSize={fieldSize} hemSkyColor={hemSkyColor} hemGroundColor={hemGroundColor} />
       <Lightning    intensity={lightning} fieldSize={fieldSize} />
+      <CandleAmbient intensity={candle}  color={candleColor} />
     </>
   )
 }
